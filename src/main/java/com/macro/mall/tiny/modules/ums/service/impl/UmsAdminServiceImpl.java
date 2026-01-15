@@ -38,7 +38,11 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
+import com.macro.mall.tiny.common.service.RedisService;
 
 /**
  * 后台管理员管理Service实现类
@@ -59,6 +63,21 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     private UmsRoleMapper roleMapper;
     @Autowired
     private UmsResourceMapper resourceMapper;
+    @Autowired
+    private RedisService redisService;
+
+    // 登录失败计数key前缀
+    private static final String LOGIN_FAIL_COUNT_KEY = "ums:admin:fail_count:";
+    // 登录锁定key前缀
+    private static final String LOGIN_LOCK_KEY = "ums:admin:lock:";
+    // 用户当前token key前缀
+    private static final String USER_CURRENT_TOKEN_KEY = "ums:admin:current_token:";
+    // 登录失败次数限制
+    private static final int LOGIN_FAIL_MAX_COUNT = 5;
+    // 锁定时间（分钟）
+    private static final int LOCK_TIME_MINUTES = 30;
+    // 失败计数时间窗口（分钟）
+    private static final int FAIL_COUNT_WINDOW_MINUTES = 10;
 
     @Override
     public UmsAdmin getAdminByUsername(String username) {
@@ -116,6 +135,105 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
             LOGGER.warn("登录异常:{}", e.getMessage());
         }
         return token;
+    }
+
+    @Override
+    public String loginWithProtection(String username, String password) {
+        String token = null;
+        // 检查是否被锁定
+        if (isLocked(username)) {
+            long remainingLockTime = getRemainingLockTime(username);
+            throw new RuntimeException("账号已被锁定，请" + remainingLockTime + "分钟后重试");
+        }
+        //密码需要客户端加密后传递
+        try {
+            UserDetails userDetails = loadUserByUsername(username);
+            if(!passwordEncoder.matches(password,userDetails.getPassword())){
+                // 登录失败，增加失败计数
+                incrementLoginFailCount(username);
+                Asserts.fail("密码不正确");
+            }
+            if(!userDetails.isEnabled()){
+                Asserts.fail("帐号已被禁用");
+            }
+            UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+            token = jwtTokenUtil.generateToken(userDetails);
+            // 登录成功，清除失败计数
+            clearLoginFailCount(username);
+            // 互斥登录：保存当前token并失效旧token
+            handleExclusiveLogin(username, token);
+//            updateLoginTimeByUsername(username);
+            insertLoginLog(username);
+        } catch (AuthenticationException e) {
+            LOGGER.warn("登录异常:{}", e.getMessage());
+        }
+        return token;
+    }
+
+    /**
+     * 检查用户是否被锁定
+     */
+    private boolean isLocked(String username) {
+        String lockKey = LOGIN_LOCK_KEY + username;
+        Boolean hasKey = redisService.hasKey(lockKey);
+        return hasKey != null && hasKey;
+    }
+
+    /**
+     * 获取剩余锁定时间（分钟）
+     */
+    private long getRemainingLockTime(String username) {
+        String lockKey = LOGIN_LOCK_KEY + username;
+        Long expire = redisService.getExpire(lockKey);
+        if (expire == null || expire <= 0) {
+            return 0;
+        }
+        return (expire + 59) / 60; // 向上取整
+    }
+
+    /**
+     * 增加登录失败计数
+     */
+    private void incrementLoginFailCount(String username) {
+        String failCountKey = LOGIN_FAIL_COUNT_KEY + username;
+        Long count = redisService.incr(failCountKey, 1);
+        if (count == 1) {
+            // 第一次失败，设置过期时间
+            redisService.expire(failCountKey, FAIL_COUNT_WINDOW_MINUTES * 60L);
+        }
+        if (count >= LOGIN_FAIL_MAX_COUNT) {
+            // 达到失败次数限制，锁定账号
+            String lockKey = LOGIN_LOCK_KEY + username;
+            redisService.set(lockKey, "LOCKED", LOCK_TIME_MINUTES * 60L);
+            // 清除失败计数
+            redisService.del(failCountKey);
+        }
+    }
+
+    /**
+     * 清除登录失败计数
+     */
+    private void clearLoginFailCount(String username) {
+        String failCountKey = LOGIN_FAIL_COUNT_KEY + username;
+        redisService.del(failCountKey);
+    }
+
+    /**
+     * 处理互斥登录
+     */
+    private void handleExclusiveLogin(String username, String newToken) {
+        String tokenKey = USER_CURRENT_TOKEN_KEY + username;
+        // 获取旧token并失效
+        String oldToken = (String) redisService.get(tokenKey);
+        if (oldToken != null) {
+            // 可以在这里记录旧token失效，或者直接覆盖
+        }
+        // 保存新token，设置与JWT相同的过期时间
+        Long expiration = jwtTokenUtil.getExpiredDateFromToken(newToken).getTime() - System.currentTimeMillis();
+        if (expiration > 0) {
+            redisService.set(tokenKey, newToken, expiration / 1000);
+        }
     }
 
     /**
@@ -267,5 +385,87 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     @Override
     public UmsAdminCacheService getCacheService() {
         return SpringUtil.getBean(UmsAdminCacheService.class);
+    }
+
+    @Override
+    public void logout(String token) {
+        if (token == null) {
+            return;
+        }
+        String username = jwtTokenUtil.getUserNameFromToken(token);
+        if (username == null) {
+            return;
+        }
+        String tokenKey = USER_CURRENT_TOKEN_KEY + username;
+        String currentToken = (String) redisService.get(tokenKey);
+        // 只有当token是当前有效token时才登出
+        if (token.equals(currentToken)) {
+            redisService.del(tokenKey);
+        }
+    }
+
+    @Override
+    public boolean validateTokenExclusively(String token) {
+        if (token == null) {
+            return false;
+        }
+        // 获取用户名
+        String username = jwtTokenUtil.getUserNameFromToken(token);
+        if (username == null) {
+            return false;
+        }
+        // 验证token是否是当前用户的有效token
+        String tokenKey = USER_CURRENT_TOKEN_KEY + username;
+        String currentToken = (String) redisService.get(tokenKey);
+        return token.equals(currentToken);
+    }
+
+    @Override
+    public List<Map<String, Object>> exportUserList() {
+        List<UmsAdmin> adminList = list();
+        List<Map<String, Object>> result = new ArrayList<>();
+        
+        for (UmsAdmin admin : adminList) {
+            Map<String, Object> userMap = new HashMap<>();
+            userMap.put("id", admin.getId());
+            userMap.put("username", admin.getUsername());
+            userMap.put("nickName", admin.getNickName());
+            userMap.put("status", admin.getStatus());
+            userMap.put("createTime", admin.getCreateTime());
+            userMap.put("loginTime", admin.getLoginTime());
+            
+            // 数据脱敏：邮箱脱敏
+            if (admin.getEmail() != null) {
+                userMap.put("email", desensitizeEmail(admin.getEmail()));
+            } else {
+                userMap.put("email", "");
+            }
+            
+            // 不导出敏感信息
+            // userMap.put("password", admin.getPassword());
+            // userMap.put("icon", admin.getIcon());
+            // userMap.put("note", admin.getNote());
+            
+            result.add(userMap);
+        }
+        
+        return result;
+    }
+
+    /**
+     * 邮箱脱敏
+     */
+    private String desensitizeEmail(String email) {
+        if (email == null || email.isEmpty()) {
+            return email;
+        }
+        int atIndex = email.indexOf('@');
+        if (atIndex <= 1) {
+            return email;
+        }
+        // 保留前两位和域名部分
+        String prefix = email.substring(0, 2);
+        String domain = email.substring(atIndex);
+        return prefix + "***" + domain;
     }
 }

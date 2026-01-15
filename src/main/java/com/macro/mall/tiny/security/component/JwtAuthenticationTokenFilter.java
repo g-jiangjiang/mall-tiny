@@ -1,6 +1,8 @@
 package com.macro.mall.tiny.security.component;
 
+import com.macro.mall.tiny.modules.ums.service.UmsAdminService;
 import com.macro.mall.tiny.security.util.JwtTokenUtil;
+import com.macro.mall.tiny.security.util.SpringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,7 +47,9 @@ public class JwtAuthenticationTokenFilter extends OncePerRequestFilter {
             LOGGER.info("checking username:{}", username);
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
-                if (jwtTokenUtil.validateToken(authToken, userDetails)) {
+                // 使用互斥登录验证
+                UmsAdminService adminService = SpringUtil.getBean(UmsAdminService.class);
+                if (adminService.validateTokenExclusively(authToken)) {
                     UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                     authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     LOGGER.info("authenticated user:{}", username);
