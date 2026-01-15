@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.macro.mall.tiny.common.exception.Asserts;
+import com.macro.mall.tiny.common.service.RedisService;
 import com.macro.mall.tiny.domain.AdminUserDetails;
 import com.macro.mall.tiny.modules.ums.dto.UmsAdminParam;
 import com.macro.mall.tiny.modules.ums.dto.UpdateAdminPasswordParam;
@@ -24,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -47,6 +49,13 @@ import java.util.List;
 @Service
 public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> implements UmsAdminService {
     private static final Logger LOGGER = LoggerFactory.getLogger(UmsAdminServiceImpl.class);
+    private static final String LOGIN_FAIL_COUNT_KEY = "ums:login:fail:";
+    private static final String ACCOUNT_LOCK_KEY = "ums:account:lock:";
+    private static final String USER_TOKEN_KEY = "ums:user:token:";
+    private static final int MAX_LOGIN_FAIL_COUNT = 5;
+    private static final int LOGIN_FAIL_TIME_WINDOW = 600;
+    private static final int ACCOUNT_LOCK_TIME = 1800;
+    
     @Autowired
     private JwtTokenUtil jwtTokenUtil;
     @Autowired
@@ -59,6 +68,10 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     private UmsRoleMapper roleMapper;
     @Autowired
     private UmsResourceMapper resourceMapper;
+    @Autowired
+    private RedisService redisService;
+    @Value("${jwt.tokenHead}")
+    private String tokenHead;
 
     @Override
     public UmsAdmin getAdminByUsername(String username) {
@@ -98,19 +111,39 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     @Override
     public String login(String username, String password) {
         String token = null;
-        //密码需要客户端加密后传递
+        String lockKey = ACCOUNT_LOCK_KEY + username;
+        if (redisService.hasKey(lockKey)) {
+            Long remainingTime = redisService.getExpire(lockKey);
+            Asserts.fail("账号已锁定，请" + (remainingTime / 60) + "分钟后再试");
+        }
+        String failCountKey = LOGIN_FAIL_COUNT_KEY + username;
         try {
             UserDetails userDetails = loadUserByUsername(username);
             if(!passwordEncoder.matches(password,userDetails.getPassword())){
+                Long failCount = redisService.incr(failCountKey, 1);
+                if (failCount == 1) {
+                    redisService.expire(failCountKey, LOGIN_FAIL_TIME_WINDOW);
+                }
+                if (failCount >= MAX_LOGIN_FAIL_COUNT) {
+                    redisService.set(lockKey, "locked", ACCOUNT_LOCK_TIME);
+                    redisService.del(failCountKey);
+                    Asserts.fail("登录失败次数过多，账号已锁定30分钟");
+                }
                 Asserts.fail("密码不正确");
             }
             if(!userDetails.isEnabled()){
                 Asserts.fail("帐号已被禁用");
             }
+            redisService.del(failCountKey);
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
             SecurityContextHolder.getContext().setAuthentication(authentication);
             token = jwtTokenUtil.generateToken(userDetails);
-//            updateLoginTimeByUsername(username);
+            String userTokenKey = USER_TOKEN_KEY + username;
+            String oldToken = (String) redisService.get(userTokenKey);
+            if (oldToken != null) {
+                redisService.del(userTokenKey);
+            }
+            redisService.set(userTokenKey, token, jwtTokenUtil.getExpiration());
             insertLoginLog(username);
         } catch (AuthenticationException e) {
             LOGGER.warn("登录异常:{}", e.getMessage());
@@ -267,5 +300,13 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     @Override
     public UmsAdminCacheService getCacheService() {
         return SpringUtil.getBean(UmsAdminCacheService.class);
+    }
+
+    @Override
+    public void unlockAccount(String username) {
+        String lockKey = ACCOUNT_LOCK_KEY + username;
+        String failCountKey = LOGIN_FAIL_COUNT_KEY + username;
+        redisService.del(lockKey);
+        redisService.del(failCountKey);
     }
 }

@@ -36,6 +36,10 @@ public class JwtTokenUtil {
     @Value("${jwt.tokenHead}")
     private String tokenHead;
 
+    public Long getExpiration() {
+        return expiration;
+    }
+
     /**
      * 根据负责生成JWT的token
      */

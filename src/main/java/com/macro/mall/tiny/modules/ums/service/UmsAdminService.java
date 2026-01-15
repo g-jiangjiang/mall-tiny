@@ -86,4 +86,9 @@ public interface UmsAdminService extends IService<UmsAdmin> {
      * 获取缓存服务
      */
     UmsAdminCacheService getCacheService();
+
+    /**
+     * 解锁账号
+     */
+    void unlockAccount(String username);
 }
