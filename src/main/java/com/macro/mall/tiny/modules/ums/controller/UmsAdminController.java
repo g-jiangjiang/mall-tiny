@@ -13,13 +13,24 @@ import com.macro.mall.tiny.modules.ums.service.UmsAdminService;
 import com.macro.mall.tiny.modules.ums.service.UmsRoleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import com.macro.mall.tiny.common.util.DesensitizationUtil;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.security.access.prepost.PreAuthorize;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.URLEncoder;
 import java.security.Principal;
 import java.util.HashMap;
 import java.util.List;
@@ -34,6 +45,7 @@ import java.util.stream.Collectors;
 @Tag(name = "UmsAdminController",description = "后台用户管理")
 @RequestMapping("/admin")
 public class UmsAdminController {
+    private static final Logger LOGGER = LoggerFactory.getLogger(UmsAdminController.class);
     @Value("${jwt.tokenHeader}")
     private String tokenHeader;
     @Value("${jwt.tokenHead}")
@@ -107,7 +119,12 @@ public class UmsAdminController {
     @Operation(summary = "登出功能")
     @RequestMapping(value = "/logout", method = RequestMethod.POST)
     @ResponseBody
-    public CommonResult logout() {
+    public CommonResult logout(Principal principal) {
+        if (principal != null) {
+            String username = principal.getName();
+            adminService.logout(username);
+            LOGGER.info("用户{}已登出", username);
+        }
         return CommonResult.success(null);
     }
 
@@ -200,5 +217,53 @@ public class UmsAdminController {
     public CommonResult<List<UmsRole>> getRoleList(@PathVariable Long adminId) {
         List<UmsRole> roleList = adminService.getRoleList(adminId);
         return CommonResult.success(roleList);
+    }
+
+    @Operation(summary = "超级管理员导出用户列表")
+    @RequestMapping(value = "/export", method = RequestMethod.GET)
+    @PreAuthorize("hasRole('ROLE_SUPER_ADMIN')")
+    public void exportUsers(HttpServletResponse response, Principal principal) throws IOException {
+        List<UmsAdmin> adminList = adminService.exportAllUsers();
+        if (CollUtil.isEmpty(adminList)) {
+            response.setStatus(HttpServletResponse.SC_NO_CONTENT);
+            return;
+        }
+
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("用户列表");
+
+            Row headerRow = sheet.createRow(0);
+            String[] headers = {"ID", "用户名", "昵称", "手机号", "邮箱", "状态", "创建时间", "最后登录时间"};
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+            }
+
+            int rowNum = 1;
+            for (UmsAdmin admin : adminList) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(admin.getId() != null ? admin.getId() : 0);
+                row.createCell(1).setCellValue(admin.getUsername() != null ? DesensitizationUtil.desensitizeUsername(admin.getUsername()) : "");
+                row.createCell(2).setCellValue(admin.getNickName() != null ? DesensitizationUtil.desensitizeNickName(admin.getNickName()) : "");
+                row.createCell(3).setCellValue(admin.getPhone() != null ? DesensitizationUtil.desensitizePhone(admin.getPhone()) : "");
+                row.createCell(4).setCellValue(admin.getEmail() != null ? DesensitizationUtil.desensitizeEmail(admin.getEmail()) : "");
+                row.createCell(5).setCellValue(admin.getStatus() != null && admin.getStatus() == 1 ? "启用" : "禁用");
+                row.createCell(6).setCellValue(admin.getCreateTime() != null ? admin.getCreateTime().toString() : "");
+                row.createCell(7).setCellValue(admin.getLoginTime() != null ? admin.getLoginTime().toString() : "");
+            }
+
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            String fileName = "用户列表_" + System.currentTimeMillis() + ".xlsx";
+            response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(fileName, "UTF-8"));
+
+            try (OutputStream outputStream = response.getOutputStream()) {
+                workbook.write(outputStream);
+                outputStream.flush();
+            }
+        }
     }
 }

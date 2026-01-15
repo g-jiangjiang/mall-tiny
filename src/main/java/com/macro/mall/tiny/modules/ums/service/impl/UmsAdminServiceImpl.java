@@ -18,6 +18,7 @@ import com.macro.mall.tiny.modules.ums.model.*;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminCacheService;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminRoleRelationService;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminService;
+import com.macro.mall.tiny.common.service.RedisService;
 import com.macro.mall.tiny.security.util.JwtTokenUtil;
 import com.macro.mall.tiny.security.util.SpringUtil;
 import org.slf4j.Logger;
@@ -35,10 +36,12 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import com.macro.mall.tiny.common.util.DesensitizationUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 后台管理员管理Service实现类
@@ -59,6 +62,15 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     private UmsRoleMapper roleMapper;
     @Autowired
     private UmsResourceMapper resourceMapper;
+    @Autowired
+    private RedisService redisService;
+
+    private static final String LOGIN_FAILURE_PREFIX = "login:failure:";
+    private static final String ACCOUNT_LOCK_PREFIX = "account:lock:";
+    private static final String USER_VALID_TOKEN_PREFIX = "user:valid:token:";
+    private static final int MAX_LOGIN_FAILURE = 5;
+    private static final int LOGIN_FAILURE_WINDOW_MINUTES = 10;
+    private static final int LOCK_DURATION_MINUTES = 30;
 
     @Override
     public UmsAdmin getAdminByUsername(String username) {
@@ -97,23 +109,45 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
 
     @Override
     public String login(String username, String password) {
+        if (StrUtil.isBlank(username) || StrUtil.isBlank(password)) {
+            LOGGER.warn("登录失败，用户名或密码为空");
+            return null;
+        }
+        if (isAccountLocked(username)) {
+            String lockKey = ACCOUNT_LOCK_PREFIX + username;
+            Long remainingTime = redisService.getExpire(lockKey);
+            LOGGER.warn("用户{}登录失败，帐号已被锁定，剩余锁定时间：{}秒", username, remainingTime);
+            return null;
+        }
         String token = null;
-        //密码需要客户端加密后传递
         try {
             UserDetails userDetails = loadUserByUsername(username);
             if(!passwordEncoder.matches(password,userDetails.getPassword())){
-                Asserts.fail("密码不正确");
+                increaseLoginFailure(username);
+                String failureKey = LOGIN_FAILURE_PREFIX + username;
+                Long failureCount = redisService.get(failureKey);
+                int remainingAttempts = Math.max(0, MAX_LOGIN_FAILURE - (failureCount != null ? failureCount.intValue() : 0));
+                LOGGER.warn("用户{}登录失败，密码错误，剩余尝试次数：{}", username, remainingAttempts);
+                return null;
             }
             if(!userDetails.isEnabled()){
-                Asserts.fail("帐号已被禁用");
+                LOGGER.warn("用户{}登录失败，帐号已被禁用", username);
+                return null;
             }
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
             SecurityContextHolder.getContext().setAuthentication(authentication);
             token = jwtTokenUtil.generateToken(userDetails);
-//            updateLoginTimeByUsername(username);
+            setCurrentValidToken(username, token);
+            resetLoginFailure(username);
+            updateLoginTimeByUsername(username);
             insertLoginLog(username);
+            LOGGER.info("用户{}登录成功", username);
+        } catch (UsernameNotFoundException e) {
+            LOGGER.warn("用户{}不存在", username);
+            return null;
         } catch (AuthenticationException e) {
-            LOGGER.warn("登录异常:{}", e.getMessage());
+            increaseLoginFailure(username);
+            LOGGER.warn("用户{}登录异常:{}", username, e.getMessage());
         }
         return token;
     }
@@ -267,5 +301,82 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     @Override
     public UmsAdminCacheService getCacheService() {
         return SpringUtil.getBean(UmsAdminCacheService.class);
+    }
+
+    @Override
+    public boolean isAccountLocked(String username) {
+        String lockKey = ACCOUNT_LOCK_PREFIX + username;
+        Boolean hasLock = redisService.hasKey(lockKey);
+        if (Boolean.TRUE.equals(hasLock)) {
+            Long expire = redisService.getExpire(lockKey);
+            return expire != null && expire > 0;
+        }
+        return false;
+    }
+
+    @Override
+    public void increaseLoginFailure(String username) {
+        String failureKey = LOGIN_FAILURE_PREFIX + username;
+        Long count = redisService.incr(failureKey, 1);
+        if (count == 1) {
+            redisService.expire(failureKey, LOGIN_FAILURE_WINDOW_MINUTES * 60);
+        }
+        if (count >= MAX_LOGIN_FAILURE) {
+            String lockKey = ACCOUNT_LOCK_PREFIX + username;
+            redisService.set(lockKey, true, LOCK_DURATION_MINUTES * 60);
+        }
+    }
+
+    @Override
+    public void resetLoginFailure(String username) {
+        String failureKey = LOGIN_FAILURE_PREFIX + username;
+        redisService.del(failureKey);
+        String lockKey = ACCOUNT_LOCK_PREFIX + username;
+        redisService.del(lockKey);
+    }
+
+    @Override
+    public String getCurrentValidToken(String username) {
+        String tokenKey = USER_VALID_TOKEN_PREFIX + username;
+        Object token = redisService.get(tokenKey);
+        return token != null ? token.toString() : null;
+    }
+
+    @Override
+    public void setCurrentValidToken(String username, String token) {
+        String tokenKey = USER_VALID_TOKEN_PREFIX + username;
+        redisService.set(tokenKey, token, 604800);
+    }
+
+    @Override
+    public boolean isValidCurrentToken(String username, String token) {
+        String currentToken = getCurrentValidToken(username);
+        return token != null && token.equals(currentToken);
+    }
+
+    @Override
+    public void logout(String username) {
+        String tokenKey = USER_VALID_TOKEN_PREFIX + username;
+        redisService.del(tokenKey);
+    }
+
+    @Override
+    public List<UmsAdmin> exportAllUsers() {
+        List<UmsAdmin> adminList = list();
+        if (CollUtil.isEmpty(adminList)) {
+            return adminList;
+        }
+        return adminList.stream().map(admin -> {
+            UmsAdmin desensitizedAdmin = new UmsAdmin();
+            BeanUtils.copyProperties(admin, desensitizedAdmin);
+            desensitizedAdmin.setUsername(DesensitizationUtil.desensitizeUsername(admin.getUsername()));
+            desensitizedAdmin.setNickName(DesensitizationUtil.desensitizeNickName(admin.getNickName()));
+            desensitizedAdmin.setPhone(DesensitizationUtil.desensitizePhone(admin.getPhone()));
+            desensitizedAdmin.setEmail(DesensitizationUtil.desensitizeEmail(admin.getEmail()));
+            desensitizedAdmin.setIcon(DesensitizationUtil.desensitizeIcon(admin.getIcon()));
+            desensitizedAdmin.setPassword(DesensitizationUtil.desensitizePassword(admin.getPassword()));
+            desensitizedAdmin.setRemark(DesensitizationUtil.desensitizeRemark(admin.getRemark()));
+            return desensitizedAdmin;
+        }).collect(Collectors.toList());
     }
 }

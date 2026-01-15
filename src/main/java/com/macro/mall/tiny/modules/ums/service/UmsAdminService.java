@@ -86,4 +86,44 @@ public interface UmsAdminService extends IService<UmsAdmin> {
      * 获取缓存服务
      */
     UmsAdminCacheService getCacheService();
+
+    /**
+     * 检查用户是否被锁定
+     */
+    boolean isAccountLocked(String username);
+
+    /**
+     * 增加登录失败次数
+     */
+    void increaseLoginFailure(String username);
+
+    /**
+     * 重置登录失败次数
+     */
+    void resetLoginFailure(String username);
+
+    /**
+     * 获取用户当前的有效token
+     */
+    String getCurrentValidToken(String username);
+
+    /**
+     * 设置用户当前的有效token
+     */
+    void setCurrentValidToken(String username, String token);
+
+    /**
+     * 验证token是否为用户当前的有效token
+     */
+    boolean isValidCurrentToken(String username, String token);
+
+    /**
+     * 登出用户
+     */
+    void logout(String username);
+
+    /**
+     * 导出用户列表（超级管理员专用）
+     */
+    List<UmsAdmin> exportAllUsers();
 }
