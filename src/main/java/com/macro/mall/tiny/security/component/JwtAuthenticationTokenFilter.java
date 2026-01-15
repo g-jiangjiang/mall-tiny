@@ -1,5 +1,6 @@
 package com.macro.mall.tiny.security.component;
 
+import com.macro.mall.tiny.common.service.RedisService;
 import com.macro.mall.tiny.security.util.JwtTokenUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,10 +26,14 @@ import java.io.IOException;
  */
 public class JwtAuthenticationTokenFilter extends OncePerRequestFilter {
     private static final Logger LOGGER = LoggerFactory.getLogger(JwtAuthenticationTokenFilter.class);
+    private static final String USER_TOKEN_KEY = "ums:user:token:";
+    
     @Autowired
     private UserDetailsService userDetailsService;
     @Autowired
     private JwtTokenUtil jwtTokenUtil;
+    @Autowired
+    private RedisService redisService;
     @Value("${jwt.tokenHeader}")
     private String tokenHeader;
     @Value("${jwt.tokenHead}")
@@ -40,10 +45,18 @@ public class JwtAuthenticationTokenFilter extends OncePerRequestFilter {
                                     FilterChain chain) throws ServletException, IOException {
         String authHeader = request.getHeader(this.tokenHeader);
         if (authHeader != null && authHeader.startsWith(this.tokenHead)) {
-            String authToken = authHeader.substring(this.tokenHead.length());// The part after "Bearer "
+            String authToken = authHeader.substring(this.tokenHead.length());
             String username = jwtTokenUtil.getUserNameFromToken(authToken);
             LOGGER.info("checking username:{}", username);
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                String userTokenKey = USER_TOKEN_KEY + username;
+                String validToken = (String) redisService.get(userTokenKey);
+                if (validToken == null || !validToken.equals(authToken)) {
+                    LOGGER.warn("token已失效，用户已在其他设备登录:{}", username);
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.getWriter().write("token已失效，用户已在其他设备登录");
+                    return;
+                }
                 UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
                 if (jwtTokenUtil.validateToken(authToken, userDetails)) {
                     UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());

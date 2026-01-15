@@ -11,19 +11,22 @@ import com.macro.mall.tiny.modules.ums.model.UmsAdmin;
 import com.macro.mall.tiny.modules.ums.model.UmsRole;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminService;
 import com.macro.mall.tiny.modules.ums.service.UmsRoleService;
+import com.macro.mall.tiny.modules.ums.util.ExcelExportUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.security.Principal;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -66,6 +69,22 @@ public class UmsAdminController {
         tokenMap.put("token", token);
         tokenMap.put("tokenHead", tokenHead);
         return CommonResult.success(tokenMap);
+    }
+
+    @Operation(summary = "解锁账号")
+    @RequestMapping(value = "/unlock/{username}", method = RequestMethod.POST)
+    @ResponseBody
+    public CommonResult unlockAccount(@PathVariable String username) {
+        Collection<? extends GrantedAuthority> authorities = SecurityContextHolder.getContext().getAuthentication().getAuthorities();
+        boolean isSuperAdmin = authorities.stream()
+                .anyMatch(auth -> auth.getAuthority().startsWith("5:"));
+
+        if (!isSuperAdmin) {
+            return CommonResult.forbidden(null);
+        }
+
+        adminService.unlockAccount(username);
+        return CommonResult.success(null);
     }
 
     @Operation(summary = "刷新token")
@@ -200,5 +219,51 @@ public class UmsAdminController {
     public CommonResult<List<UmsRole>> getRoleList(@PathVariable Long adminId) {
         List<UmsRole> roleList = adminService.getRoleList(adminId);
         return CommonResult.success(roleList);
+    }
+
+    @Operation(summary = "导出用户列表（仅超级管理员）")
+    @RequestMapping(value = "/export", method = RequestMethod.GET)
+    public void exportAdminList(HttpServletResponse response,
+                                @RequestParam(value = "keyword", required = false) String keyword) throws IOException {
+        Collection<? extends GrantedAuthority> authorities = SecurityContextHolder.getContext().getAuthentication().getAuthorities();
+        boolean isSuperAdmin = authorities.stream()
+                .anyMatch(auth -> auth.getAuthority().startsWith("5:"));
+
+        if (!isSuperAdmin) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.getWriter().write("无权限导出用户列表，仅超级管理员可操作");
+            return;
+        }
+
+        Page<UmsAdmin> adminList = adminService.list(keyword, 10000, 1);
+        List<Map<String, Object>> dataList = new ArrayList<>();
+        for (UmsAdmin admin : adminList.getRecords()) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("用户ID", admin.getId());
+            data.put("用户名", admin.getUsername());
+            data.put("昵称", admin.getNickName());
+            data.put("邮箱", maskEmail(admin.getEmail()));
+            data.put("状态", admin.getStatus() == 1 ? "启用" : "禁用");
+            data.put("创建时间", admin.getCreateTime());
+            data.put("最后登录时间", admin.getLoginTime());
+            data.put("备注", admin.getNote());
+            dataList.add(data);
+        }
+
+        String[] headers = {"用户ID", "用户名", "昵称", "邮箱", "状态", "创建时间", "最后登录时间", "备注"};
+        ExcelExportUtil.exportExcel(response, "用户列表_" + System.currentTimeMillis(), "用户列表", headers, dataList);
+    }
+
+    private String maskEmail(String email) {
+        if (email == null || email.length() == 0) {
+            return "";
+        }
+        int atIndex = email.indexOf("@");
+        if (atIndex <= 2) {
+            return email;
+        }
+        String prefix = email.substring(0, 2);
+        String suffix = email.substring(atIndex);
+        return prefix + "***" + suffix;
     }
 }

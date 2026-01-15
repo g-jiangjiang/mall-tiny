@@ -23,6 +23,7 @@
         <springdoc-openapi.version>2.0.2</springdoc-openapi.version>
         <velocity.version>2.3</velocity.version>
         <jaxb-api.version>2.3.1</jaxb-api.version>
+        <poi.version>5.2.3</poi.version>
     </properties>
 
     <parent>
@@ -130,6 +131,16 @@
             <groupId>javax.xml.bind</groupId>
             <artifactId>jaxb-api</artifactId>
             <version>${jaxb-api.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
         </dependency>
     </dependencies>
 
