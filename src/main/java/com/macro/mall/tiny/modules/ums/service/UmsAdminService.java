@@ -86,4 +86,31 @@ public interface UmsAdminService extends IService<UmsAdmin> {
      * 获取缓存服务
      */
     UmsAdminCacheService getCacheService();
+
+    /**
+     * 登录功能（带防爆破）
+     * @param username 用户名
+     * @param password 密码
+     * @return 生成的JWT的token
+     */
+    String loginWithProtection(String username, String password);
+
+    /**
+     * 登出功能（互斥登录）
+     * @param token 要登出的token
+     */
+    void logout(String token);
+
+    /**
+     * 检查token是否有效（互斥登录）
+     * @param token 要检查的token
+     * @return 是否有效
+     */
+    boolean validateTokenExclusively(String token);
+
+    /**
+     * 导出用户列表（脱敏）
+     * @return 用户列表数据
+     */
+    List<Map<String, Object>> exportUserList();
 }

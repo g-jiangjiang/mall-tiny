@@ -58,14 +58,18 @@ public class UmsAdminController {
     @RequestMapping(value = "/login", method = RequestMethod.POST)
     @ResponseBody
     public CommonResult login(@Validated @RequestBody UmsAdminLoginParam umsAdminLoginParam) {
-        String token = adminService.login(umsAdminLoginParam.getUsername(), umsAdminLoginParam.getPassword());
-        if (token == null) {
-            return CommonResult.validateFailed("用户名或密码错误");
+        try {
+            String token = adminService.loginWithProtection(umsAdminLoginParam.getUsername(), umsAdminLoginParam.getPassword());
+            if (token == null) {
+                return CommonResult.validateFailed("用户名或密码错误");
+            }
+            Map<String, String> tokenMap = new HashMap<>();
+            tokenMap.put("token", token);
+            tokenMap.put("tokenHead", tokenHead);
+            return CommonResult.success(tokenMap);
+        } catch (RuntimeException e) {
+            return CommonResult.validateFailed(e.getMessage());
         }
-        Map<String, String> tokenMap = new HashMap<>();
-        tokenMap.put("token", token);
-        tokenMap.put("tokenHead", tokenHead);
-        return CommonResult.success(tokenMap);
     }
 
     @Operation(summary = "刷新token")
@@ -107,8 +111,21 @@ public class UmsAdminController {
     @Operation(summary = "登出功能")
     @RequestMapping(value = "/logout", method = RequestMethod.POST)
     @ResponseBody
-    public CommonResult logout() {
+    public CommonResult logout(HttpServletRequest request) {
+        String token = request.getHeader(tokenHeader);
+        if (token != null && token.startsWith(tokenHead)) {
+            token = token.substring(tokenHead.length());
+            adminService.logout(token);
+        }
         return CommonResult.success(null);
+    }
+
+    @Operation(summary = "导出用户列表（脱敏）")
+    @RequestMapping(value = "/export", method = RequestMethod.GET)
+    @ResponseBody
+    public CommonResult<List<Map<String, Object>>> exportUserList() {
+        List<Map<String, Object>> userList = adminService.exportUserList();
+        return CommonResult.success(userList);
     }
 
     @Operation(summary ="根据用户名或姓名分页获取用户列表")
