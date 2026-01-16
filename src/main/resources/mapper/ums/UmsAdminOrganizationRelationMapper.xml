@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.modules.ums.mapper.UmsAdminOrganizationRelationMapper">
+
+    <resultMap id="BaseResultMap" type="com.macro.mall.tiny.modules.ums.model.UmsAdminOrganizationRelation">
+        <id column="id" jdbcType="BIGINT" property="id"/>
+        <result column="admin_id" jdbcType="BIGINT" property="adminId"/>
+        <result column="organization_id" jdbcType="BIGINT" property="organizationId"/>
+        <result column="scope" jdbcType="INTEGER" property="scope"/>
+    </resultMap>
+
+    <select id="selectByAdminId" resultMap="BaseResultMap">
+        SELECT * FROM ums_admin_organization_relation
+        WHERE admin_id = #{adminId}
+    </select>
+
+</mapper>

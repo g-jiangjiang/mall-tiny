@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.modules.ums.mapper.UmsOrganizationMapper">
+
+    <resultMap id="BaseResultMap" type="com.macro.mall.tiny.modules.ums.model.UmsOrganization">
+        <id column="id" jdbcType="BIGINT" property="id"/>
+        <result column="name" jdbcType="VARCHAR" property="name"/>
+        <result column="parent_id" jdbcType="BIGINT" property="parentId"/>
+        <result column="level" jdbcType="INTEGER" property="level"/>
+        <result column="description" jdbcType="VARCHAR" property="description"/>
+        <result column="sort" jdbcType="INTEGER" property="sort"/>
+        <result column="create_time" jdbcType="TIMESTAMP" property="createTime"/>
+        <result column="status" jdbcType="INTEGER" property="status"/>
+    </resultMap>
+
+    <select id="selectChildren" resultMap="BaseResultMap">
+        SELECT * FROM ums_organization
+        WHERE parent_id = #{parentId}
+        AND status = 1
+        ORDER BY sort ASC, id ASC
+    </select>
+
+    <select id="selectAllChildren" resultMap="BaseResultMap">
+        SELECT * FROM ums_organization
+        WHERE FIND_IN_SET(id, get_organization_children(#{parentId}))
+        AND status = 1
+        ORDER BY level ASC, sort ASC, id ASC
+    </select>
+
+</mapper>
