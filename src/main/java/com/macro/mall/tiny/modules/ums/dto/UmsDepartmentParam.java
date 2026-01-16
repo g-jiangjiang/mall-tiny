@@ -3,8 +3,8 @@ package com.macro.mall.tiny.modules.ums.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-import javax.validation.constraints.NotBlank;
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 @Data
 @Schema(title = "UmsDepartmentParam对象", description = "部门参数")

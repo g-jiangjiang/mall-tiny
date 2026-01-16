@@ -3,15 +3,18 @@ package com.macro.mall.tiny.modules.ums.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 @Data
 @Schema(title = "RoleDataScopeParam对象", description = "角色数据范围参数")
 public class RoleDataScopeParam {
 
+    @NotNull(message = "角色ID不能为空")
     @Schema(title = "角色ID")
     private Long roleId;
 
+    @NotNull(message = "数据范围不能为空")
     @Schema(title = "数据范围：1->全部数据权限；2->自定义数据权限；3->本部门数据权限；4->本部门及以下数据权限；5->仅本人数据权限")
     private Integer dataScope;
 
