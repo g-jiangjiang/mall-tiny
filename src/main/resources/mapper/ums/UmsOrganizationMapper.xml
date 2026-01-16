@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.modules.ums.mapper.UmsOrganizationMapper">
+
+    <resultMap id="BaseResultMap" type="com.macro.mall.tiny.modules.ums.model.UmsOrganization">
+        <id column="id" jdbcType="BIGINT" property="id"/>
+        <result column="name" jdbcType="VARCHAR" property="name"/>
+        <result column="parent_id" jdbcType="BIGINT" property="parentId"/>
+        <result column="level" jdbcType="INTEGER" property="level"/>
+        <result column="description" jdbcType="VARCHAR" property="description"/>
+        <result column="sort" jdbcType="INTEGER" property="sort"/>
+        <result column="create_time" jdbcType="TIMESTAMP" property="createTime"/>
+        <result column="update_time" jdbcType="TIMESTAMP" property="updateTime"/>
+        <result column="status" jdbcType="INTEGER" property="status"/>
+        <result column="is_default" jdbcType="INTEGER" property="isDefault"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, name, parent_id, level, description, sort, create_time, update_time, status, is_default
+    </sql>
+
+    <select id="getSubOrganizationIds" resultType="java.lang.Long">
+        WITH RECURSIVE org_tree AS (
+            SELECT id FROM ums_organization WHERE id = #{orgId}
+            UNION ALL
+            SELECT o.id FROM ums_organization o
+            INNER JOIN org_tree ot ON o.parent_id = ot.id
+        )
+        SELECT id FROM org_tree;
+    </select>
+
+    <select id="getOrganizationPath" resultType="java.lang.Long">
+        WITH RECURSIVE org_path AS (
+            SELECT id, parent_id FROM ums_organization WHERE id = #{orgId}
+            UNION ALL
+            SELECT o.id, o.parent_id FROM ums_organization o
+            INNER JOIN org_path op ON o.id = op.parent_id
+        )
+        SELECT id FROM org_path ORDER BY id;
+    </select>
+
+    <select id="listByLevel" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM ums_organization
+        WHERE level = #{level}
+        AND status = 1
+        ORDER BY sort ASC, id ASC
+    </select>
+
+</mapper>

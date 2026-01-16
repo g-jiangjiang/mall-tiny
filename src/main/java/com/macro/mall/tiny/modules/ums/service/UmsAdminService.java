@@ -86,4 +86,14 @@ public interface UmsAdminService extends IService<UmsAdmin> {
      * 获取缓存服务
      */
     UmsAdminCacheService getCacheService();
+
+    /**
+     * 判断用户是否有权限管理指定组织
+     */
+    boolean hasOrganizationPermission(Long adminId, Long targetOrgId);
+
+    /**
+     * 获取用户可管理的组织ID列表
+     */
+    List<Long> getManagedOrganizationIds(Long adminId);
 }

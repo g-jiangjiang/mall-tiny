@@ -14,10 +14,13 @@ import com.macro.mall.tiny.modules.ums.mapper.UmsAdminLoginLogMapper;
 import com.macro.mall.tiny.modules.ums.mapper.UmsAdminMapper;
 import com.macro.mall.tiny.modules.ums.mapper.UmsResourceMapper;
 import com.macro.mall.tiny.modules.ums.mapper.UmsRoleMapper;
+import com.macro.mall.tiny.modules.ums.mapper.UmsOrganizationMapper;
+import com.macro.mall.tiny.modules.ums.mapper.UmsAdminOrgScopeMapper;
 import com.macro.mall.tiny.modules.ums.model.*;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminCacheService;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminRoleRelationService;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminService;
+import com.macro.mall.tiny.modules.ums.service.UmsOrganizationService;
 import com.macro.mall.tiny.security.util.JwtTokenUtil;
 import com.macro.mall.tiny.security.util.SpringUtil;
 import org.slf4j.Logger;
@@ -35,7 +38,6 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -59,6 +61,10 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     private UmsRoleMapper roleMapper;
     @Autowired
     private UmsResourceMapper resourceMapper;
+    @Autowired
+    private UmsOrganizationMapper organizationMapper;
+    @Autowired
+    private UmsAdminOrgScopeMapper adminOrgScopeMapper;
 
     @Override
     public UmsAdmin getAdminByUsername(String username) {
@@ -267,5 +273,61 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     @Override
     public UmsAdminCacheService getCacheService() {
         return SpringUtil.getBean(UmsAdminCacheService.class);
+    }
+
+    @Override
+    public boolean hasOrganizationPermission(Long adminId, Long targetOrgId) {
+        if (adminId == null || targetOrgId == null) {
+            return false;
+        }
+
+        // 获取用户的权限范围配置
+        List<UmsAdminOrgScope> scopeList = adminOrgScopeMapper.listByAdminId(adminId);
+        if (scopeList.isEmpty()) {
+            // 无权限配置，默认无权限
+            return false;
+        }
+
+        for (UmsAdminOrgScope scope : scopeList) {
+            if (scope.getScopeType() == 1) {
+                // 全公司权限
+                return true;
+            } else if (scope.getScopeType() == 2) {
+                // 部门权限，检查目标组织是否在用户部门及其子部门中
+                List<Long> subOrgIds = organizationMapper.getSubOrganizationIds(scope.getOrgId());
+                if (subOrgIds.contains(targetOrgId)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    @Override
+    public List<Long> getManagedOrganizationIds(Long adminId) {
+        if (adminId == null) {
+            return new ArrayList<>();
+        }
+
+        List<Long> managedOrgIds = new ArrayList<>();
+        List<UmsAdminOrgScope> scopeList = adminOrgScopeMapper.listByAdminId(adminId);
+
+        for (UmsAdminOrgScope scope : scopeList) {
+            if (scope.getScopeType() == 1) {
+                // 全公司权限，返回所有组织
+                List<UmsOrganization> allOrgs = organizationMapper.selectList(null);
+                for (UmsOrganization org : allOrgs) {
+                    managedOrgIds.add(org.getId());
+                }
+                return managedOrgIds; // 全公司权限直接返回
+            } else if (scope.getScopeType() == 2) {
+                // 部门权限，返回部门及其子部门
+                List<Long> subOrgIds = organizationMapper.getSubOrganizationIds(scope.getOrgId());
+                managedOrgIds.addAll(subOrgIds);
+            }
+        }
+
+        return managedOrgIds;
     }
 }
