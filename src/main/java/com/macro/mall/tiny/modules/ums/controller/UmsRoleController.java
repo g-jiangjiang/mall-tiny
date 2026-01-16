@@ -125,4 +125,12 @@ public class UmsRoleController {
         return CommonResult.success(count);
     }
 
+    @Operation(summary = "获取角色详情")
+    @RequestMapping(value = "/{id}", method = RequestMethod.GET)
+    @ResponseBody
+    public CommonResult<UmsRole> get(@PathVariable Long id) {
+        UmsRole role = roleService.getById(id);
+        return CommonResult.success(role);
+    }
+
 }

@@ -45,5 +45,10 @@ public class UmsRole implements Serializable {
 
     private Integer sort;
 
+    @Schema(title = "数据范围：1->全部数据权限；2->自定义数据权限；3->本部门数据权限；4->本部门及以下数据权限；5->仅本人数据权限")
+    private Integer dataScope;
+
+    @Schema(title = "部门ID，当数据范围为3或4时使用")
+    private Long deptId;
 
 }

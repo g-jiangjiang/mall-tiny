@@ -53,5 +53,7 @@ public class UmsAdmin implements Serializable {
     @Schema(title = "帐号启用状态：0->禁用；1->启用")
     private Integer status;
 
+    @Schema(title = "部门ID")
+    private Long deptId;
 
 }
