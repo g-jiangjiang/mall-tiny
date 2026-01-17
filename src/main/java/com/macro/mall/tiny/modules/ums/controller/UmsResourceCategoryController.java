@@ -47,8 +47,11 @@ public class UmsResourceCategoryController {
     @ResponseBody
     public CommonResult update(@PathVariable Long id,
                                @RequestBody UmsResourceCategory umsResourceCategory) {
-        umsResourceCategory.setId(id);
-        boolean success = resourceCategoryService.updateById(umsResourceCategory);
+        UmsResourceCategory updateCategory = new UmsResourceCategory();
+        updateCategory.setId(id);
+        updateCategory.setName(umsResourceCategory.getName());
+        updateCategory.setSort(umsResourceCategory.getSort());
+        boolean success = resourceCategoryService.updateById(updateCategory);
         if (success) {
             return CommonResult.success(null);
         } else {

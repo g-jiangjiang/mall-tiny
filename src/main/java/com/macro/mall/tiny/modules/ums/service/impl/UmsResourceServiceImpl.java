@@ -24,14 +24,24 @@ public class UmsResourceServiceImpl extends ServiceImpl<UmsResourceMapper,UmsRes
     private UmsAdminCacheService adminCacheService;
     @Override
     public boolean create(UmsResource umsResource) {
-        umsResource.setCreateTime(new Date());
-        return save(umsResource);
+        UmsResource newResource = new UmsResource();
+        newResource.setName(umsResource.getName());
+        newResource.setUrl(umsResource.getUrl());
+        newResource.setDescription(umsResource.getDescription());
+        newResource.setCategoryId(umsResource.getCategoryId());
+        newResource.setCreateTime(new Date());
+        return save(newResource);
     }
 
     @Override
     public boolean update(Long id, UmsResource umsResource) {
-        umsResource.setId(id);
-        boolean success = updateById(umsResource);
+        UmsResource updateResource = new UmsResource();
+        updateResource.setId(id);
+        updateResource.setName(umsResource.getName());
+        updateResource.setUrl(umsResource.getUrl());
+        updateResource.setDescription(umsResource.getDescription());
+        updateResource.setCategoryId(umsResource.getCategoryId());
+        boolean success = updateById(updateResource);
         adminCacheService.delResourceListByResource(id);
         return success;
     }
