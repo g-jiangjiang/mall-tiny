@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.mapper.PmsSkuMapper">
+    <resultMap id="BaseResultMap" type="com.macro.mall.tiny.domain.PmsSku">
+        <id column="id" property="id"/>
+        <result column="code" property="code"/>
+        <result column="spu_id" property="spuId"/>
+        <result column="price" property="price"/>
+        <result column="stock" property="stock"/>
+        <result column="specs" property="specs"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+</mapper>
