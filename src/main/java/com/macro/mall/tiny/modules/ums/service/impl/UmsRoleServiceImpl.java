@@ -10,6 +10,7 @@ import com.macro.mall.tiny.modules.ums.mapper.UmsResourceMapper;
 import com.macro.mall.tiny.modules.ums.mapper.UmsRoleMapper;
 import com.macro.mall.tiny.modules.ums.model.*;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminCacheService;
+import com.macro.mall.tiny.modules.ums.service.UmsRoleDepartmentRelationService;
 import com.macro.mall.tiny.modules.ums.service.UmsRoleMenuRelationService;
 import com.macro.mall.tiny.modules.ums.service.UmsRoleResourceRelationService;
 import com.macro.mall.tiny.modules.ums.service.UmsRoleService;
@@ -36,6 +37,8 @@ public class UmsRoleServiceImpl extends ServiceImpl<UmsRoleMapper,UmsRole>implem
     private UmsMenuMapper menuMapper;
     @Autowired
     private UmsResourceMapper resourceMapper;
+    @Autowired
+    private UmsRoleDepartmentRelationService roleDepartmentRelationService;
     @Override
     public boolean create(UmsRole role) {
         role.setCreateTime(new Date());
@@ -112,5 +115,15 @@ public class UmsRoleServiceImpl extends ServiceImpl<UmsRoleMapper,UmsRole>implem
         roleResourceRelationService.saveBatch(relationList);
         adminCacheService.delResourceListByRole(roleId);
         return resourceIds.size();
+    }
+
+    @Override
+    public int allocDepartment(Long roleId, List<Long> departmentIds) {
+        return roleDepartmentRelationService.allocDepartments(roleId, departmentIds) ? departmentIds.size() : 0;
+    }
+
+    @Override
+    public List<Long> getDepartmentIds(Long roleId) {
+        return roleDepartmentRelationService.getDepartmentIdsByRoleId(roleId);
     }
 }

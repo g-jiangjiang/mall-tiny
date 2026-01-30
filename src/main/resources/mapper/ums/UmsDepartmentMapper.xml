@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.modules.ums.mapper.UmsDepartmentMapper">
+
+    <select id="getDepartmentListByRoleId" resultMap="departmentResultMap">
+        SELECT d.*
+        FROM ums_department d
+        INNER JOIN ums_role_department_relation rdr ON d.id = rdr.department_id
+        WHERE rdr.role_id = #{roleId}
+        AND d.status = 1
+        ORDER BY d.sort ASC, d.id ASC
+    </select>
+
+    <select id="getDepartmentListByAdminId" resultMap="departmentResultMap">
+        SELECT DISTINCT d.*
+        FROM ums_department d
+        INNER JOIN ums_role_department_relation rdr ON d.id = rdr.department_id
+        INNER JOIN ums_admin_role_relation arr ON rdr.role_id = arr.role_id
+        WHERE arr.admin_id = #{adminId}
+        AND d.status = 1
+        ORDER BY d.sort ASC, d.id ASC
+    </select>
+
+    <resultMap id="departmentResultMap" type="com.macro.mall.tiny.modules.ums.model.UmsDepartment">
+        <id column="id" property="id"/>
+        <result column="parent_id" property="parentId"/>
+        <result column="name" property="name"/>
+        <result column="level" property="level"/>
+        <result column="sort" property="sort"/>
+        <result column="create_time" property="createTime"/>
+        <result column="status" property="status"/>
+        <result column="description" property="description"/>
+    </resultMap>
+
+</mapper>

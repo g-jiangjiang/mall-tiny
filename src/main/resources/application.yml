@@ -35,6 +35,9 @@ redis:
   expire:
     common: 86400 # 24小时
 
+mall-tiny:
+  super-admin-role-ids: 5 # 超级管理员角色ID，多个用逗号分隔
+
 secure:
   ignored:
     urls: #安全路径白名单
