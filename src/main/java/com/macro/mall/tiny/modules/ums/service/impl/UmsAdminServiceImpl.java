@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.macro.mall.tiny.common.exception.Asserts;
 import com.macro.mall.tiny.domain.AdminUserDetails;
+import com.macro.mall.tiny.modules.ums.dto.UmsAdminExcelDto;
 import com.macro.mall.tiny.modules.ums.dto.UmsAdminParam;
 import com.macro.mall.tiny.modules.ums.dto.UpdateAdminPasswordParam;
 import com.macro.mall.tiny.modules.ums.mapper.UmsAdminLoginLogMapper;
@@ -16,7 +17,9 @@ import com.macro.mall.tiny.modules.ums.mapper.UmsResourceMapper;
 import com.macro.mall.tiny.modules.ums.mapper.UmsRoleMapper;
 import com.macro.mall.tiny.modules.ums.model.*;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminCacheService;
+import com.macro.mall.tiny.modules.ums.service.UmsAdminLoginAttemptService;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminRoleRelationService;
+import com.macro.mall.tiny.modules.ums.service.UmsTokenStoreService;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminService;
 import com.macro.mall.tiny.security.util.JwtTokenUtil;
 import com.macro.mall.tiny.security.util.SpringUtil;
@@ -39,6 +42,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 后台管理员管理Service实现类
@@ -59,6 +63,10 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     private UmsRoleMapper roleMapper;
     @Autowired
     private UmsResourceMapper resourceMapper;
+    @Autowired
+    private UmsAdminLoginAttemptService loginAttemptService;
+    @Autowired
+    private UmsTokenStoreService tokenStoreService;
 
     @Override
     public UmsAdmin getAdminByUsername(String username) {
@@ -98,11 +106,20 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     @Override
     public String login(String username, String password) {
         String token = null;
-        //密码需要客户端加密后传递
+        if (loginAttemptService.isLocked(username)) {
+            long remainingMinutes = loginAttemptService.getRemainingLockTime(username);
+            Asserts.fail("账号已被锁定，请" + remainingMinutes + "分钟后重试");
+        }
         try {
             UserDetails userDetails = loadUserByUsername(username);
             if(!passwordEncoder.matches(password,userDetails.getPassword())){
-                Asserts.fail("密码不正确");
+                loginAttemptService.loginFailed(username);
+                int remainingAttempts = 5 - loginAttemptService.getFailedAttempts(username);
+                if (remainingAttempts > 0) {
+                    Asserts.fail("密码不正确，还有" + remainingAttempts + "次尝试机会");
+                } else {
+                    Asserts.fail("密码不正确，账号已被锁定");
+                }
             }
             if(!userDetails.isEnabled()){
                 Asserts.fail("帐号已被禁用");
@@ -110,7 +127,8 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
             SecurityContextHolder.getContext().setAuthentication(authentication);
             token = jwtTokenUtil.generateToken(userDetails);
-//            updateLoginTimeByUsername(username);
+            loginAttemptService.loginSucceeded(username);
+            tokenStoreService.storeToken(username, token);
             insertLoginLog(username);
         } catch (AuthenticationException e) {
             LOGGER.warn("登录异常:{}", e.getMessage());
@@ -267,5 +285,25 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     @Override
     public UmsAdminCacheService getCacheService() {
         return SpringUtil.getBean(UmsAdminCacheService.class);
+    }
+
+    @Override
+    public List<UmsAdminExcelDto> exportAllAdmins() {
+        List<UmsAdmin> adminList = list();
+        return adminList.stream().map(admin -> {
+            UmsAdminExcelDto dto = new UmsAdminExcelDto();
+            BeanUtils.copyProperties(admin, dto);
+            dto.setStatusDesc(admin.getStatus() == 1 ? "启用" : "禁用");
+            return dto;
+        }).collect(Collectors.toList());
+    }
+
+    @Override
+    public boolean isSuperAdmin(Long adminId) {
+        List<UmsRole> roleList = roleMapper.getRoleList(adminId);
+        if (CollUtil.isEmpty(roleList)) {
+            return false;
+        }
+        return roleList.stream().anyMatch(role -> "超级管理员".equals(role.getName()));
     }
 }
