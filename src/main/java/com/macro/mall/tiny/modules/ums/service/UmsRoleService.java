@@ -55,4 +55,15 @@ public interface UmsRoleService extends IService<UmsRole> {
      */
     @Transactional
     int allocResource(Long roleId, List<Long> resourceIds);
+
+    /**
+     * 给角色分配组织架构范围
+     */
+    @Transactional
+    int allocDepartment(Long roleId, List<Long> departmentIds);
+
+    /**
+     * 获取角色相关组织架构ID列表
+     */
+    List<Long> getDepartmentIds(Long roleId);
 }

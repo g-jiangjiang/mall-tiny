@@ -125,4 +125,20 @@ public class UmsRoleController {
         return CommonResult.success(count);
     }
 
+    @Operation(summary = "给角色分配组织架构范围")
+    @RequestMapping(value = "/allocDepartment", method = RequestMethod.POST)
+    @ResponseBody
+    public CommonResult allocDepartment(@RequestParam Long roleId, @RequestParam List<Long> departmentIds) {
+        int count = roleService.allocDepartment(roleId, departmentIds);
+        return CommonResult.success(count);
+    }
+
+    @Operation(summary = "获取角色相关组织架构ID列表")
+    @RequestMapping(value = "/listDepartment/{roleId}", method = RequestMethod.GET)
+    @ResponseBody
+    public CommonResult<List<Long>> listDepartment(@PathVariable Long roleId) {
+        List<Long> departmentIds = roleService.getDepartmentIds(roleId);
+        return CommonResult.success(departmentIds);
+    }
+
 }
