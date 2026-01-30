@@ -1,9 +1,11 @@
 package com.macro.mall.tiny.modules.ums.controller;
 
 import cn.hutool.core.collection.CollUtil;
+import com.alibaba.excel.EasyExcel;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.macro.mall.tiny.common.api.CommonPage;
 import com.macro.mall.tiny.common.api.CommonResult;
+import com.macro.mall.tiny.modules.ums.dto.UmsAdminExcelDto;
 import com.macro.mall.tiny.modules.ums.dto.UmsAdminLoginParam;
 import com.macro.mall.tiny.modules.ums.dto.UmsAdminParam;
 import com.macro.mall.tiny.modules.ums.dto.UpdateAdminPasswordParam;
@@ -20,6 +22,9 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.net.URLEncoder;
 import java.security.Principal;
 import java.util.HashMap;
 import java.util.List;
@@ -200,5 +205,26 @@ public class UmsAdminController {
     public CommonResult<List<UmsRole>> getRoleList(@PathVariable Long adminId) {
         List<UmsRole> roleList = adminService.getRoleList(adminId);
         return CommonResult.success(roleList);
+    }
+
+    @Operation(summary = "导出用户列表（仅超级管理员）")
+    @RequestMapping(value = "/export", method = RequestMethod.GET)
+    public void export(HttpServletResponse response, Principal principal) throws IOException {
+        if (principal == null) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            return;
+        }
+        String username = principal.getName();
+        UmsAdmin currentAdmin = adminService.getAdminByUsername(username);
+        if (currentAdmin == null || !adminService.isSuperAdmin(currentAdmin.getId())) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            return;
+        }
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding("utf-8");
+        String fileName = URLEncoder.encode("用户列表_" + System.currentTimeMillis(), "UTF-8").replaceAll("\\+", "%20");
+        response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
+        List<UmsAdminExcelDto> adminList = adminService.exportAllAdmins();
+        EasyExcel.write(response.getOutputStream(), UmsAdminExcelDto.class).sheet("用户列表").doWrite(adminList);
     }
 }
