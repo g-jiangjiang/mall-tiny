@@ -86,4 +86,10 @@ public interface UmsAdminService extends IService<UmsAdmin> {
      * 获取缓存服务
      */
     UmsAdminCacheService getCacheService();
+    
+    /**
+     * 清除用户token记录
+     * @param username 用户名
+     */
+    void clearUserToken(String username);
 }

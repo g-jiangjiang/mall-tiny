@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.macro.mall.tiny.common.SecurityConstants;
 import com.macro.mall.tiny.common.exception.Asserts;
 import com.macro.mall.tiny.domain.AdminUserDetails;
 import com.macro.mall.tiny.modules.ums.dto.UmsAdminParam;
@@ -18,6 +19,7 @@ import com.macro.mall.tiny.modules.ums.model.*;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminCacheService;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminRoleRelationService;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminService;
+import com.macro.mall.tiny.modules.ums.service.UmsSecurityService;
 import com.macro.mall.tiny.security.util.JwtTokenUtil;
 import com.macro.mall.tiny.security.util.SpringUtil;
 import org.slf4j.Logger;
@@ -59,6 +61,8 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     private UmsRoleMapper roleMapper;
     @Autowired
     private UmsResourceMapper resourceMapper;
+    @Autowired
+    private UmsSecurityService securityService;
 
     @Override
     public UmsAdmin getAdminByUsername(String username) {
@@ -100,16 +104,39 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
         String token = null;
         //密码需要客户端加密后传递
         try {
+            // 检查用户是否被锁定
+            UmsAdminLocked lockedRecord = securityService.checkUserLocked(username);
+            if (lockedRecord != null) {
+                Asserts.fail("账号已被锁定，原因：" + lockedRecord.getLockReason() + 
+                             "，解锁时间：" + lockedRecord.getUnlockTime());
+            }
+            
             UserDetails userDetails = loadUserByUsername(username);
             if(!passwordEncoder.matches(password,userDetails.getPassword())){
-                Asserts.fail("密码不正确");
+                // 记录登录失败
+                ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+                HttpServletRequest request = attributes.getRequest();
+                String ip = request.getRemoteAddr();
+                boolean isLocked = securityService.recordLoginFailure(username, ip, "密码错误");
+                
+                if (isLocked) {
+                        Asserts.fail("密码错误次数过多，账号已被锁定" + SecurityConstants.LOCK_DURATION_MINUTES + "分钟");
+                    } else {
+                        Asserts.fail("密码不正确");
+                    }
             }
             if(!userDetails.isEnabled()){
                 Asserts.fail("帐号已被禁用");
             }
+            
+            // 检查是否互斥登录
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
             SecurityContextHolder.getContext().setAuthentication(authentication);
             token = jwtTokenUtil.generateToken(userDetails);
+            
+            // 记录token用于互斥登录检查
+            securityService.recordUserToken(username, token);
+            
 //            updateLoginTimeByUsername(username);
             insertLoginLog(username);
         } catch (AuthenticationException e) {
@@ -267,5 +294,10 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
     @Override
     public UmsAdminCacheService getCacheService() {
         return SpringUtil.getBean(UmsAdminCacheService.class);
+    }
+    
+    @Override
+    public void clearUserToken(String username) {
+        securityService.clearUserToken(username);
     }
 }
