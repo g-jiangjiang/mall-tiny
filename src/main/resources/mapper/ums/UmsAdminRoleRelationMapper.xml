@@ -9,4 +9,10 @@
         <result column="role_id" property="roleId" />
     </resultMap>
 
+    <select id="getAdminRoleIds" resultType="java.lang.Long">
+        SELECT role_id
+        FROM ums_admin_role_relation
+        WHERE admin_id = #{adminId}
+    </select>
+
 </mapper>

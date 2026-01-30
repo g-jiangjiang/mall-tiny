@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.modules.ums.mapper.UmsOrganizationMapper">
+
+    <resultMap id="BaseResultMap" type="com.macro.mall.tiny.modules.ums.model.UmsOrganization">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="name" property="name" jdbcType="VARCHAR"/>
+        <result column="code" property="code" jdbcType="VARCHAR"/>
+        <result column="parent_id" property="parentId" jdbcType="BIGINT"/>
+        <result column="level" property="level" jdbcType="INTEGER"/>
+        <result column="sort" property="sort" jdbcType="INTEGER"/>
+        <result column="status" property="status" jdbcType="INTEGER"/>
+        <result column="description" property="description" jdbcType="VARCHAR"/>
+        <result column="create_time" property="createTime" jdbcType="TIMESTAMP"/>
+        <result column="update_time" property="updateTime" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <resultMap id="TreeNodeResultMap" type="com.macro.mall.tiny.modules.ums.dto.OrganizationTreeNode">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="name" property="name" jdbcType="VARCHAR"/>
+        <result column="code" property="code" jdbcType="VARCHAR"/>
+        <result column="parent_id" property="parentId" jdbcType="BIGINT"/>
+        <result column="level" property="level" jdbcType="INTEGER"/>
+        <result column="sort" property="sort" jdbcType="INTEGER"/>
+        <result column="status" property="status" jdbcType="INTEGER"/>
+        <result column="description" property="description" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <select id="getOrganizationTree" resultMap="TreeNodeResultMap">
+        SELECT 
+            o.id,
+            o.name,
+            o.code,
+            o.parent_id,
+            o.level,
+            o.sort,
+            o.status,
+            o.description
+        FROM ums_organization o
+        WHERE o.status = 1
+        ORDER BY o.level, o.sort
+    </select>
+
+    <select id="getAccessibleOrganizationIds" resultType="java.lang.Long">
+        SELECT DISTINCT o.id
+        FROM ums_organization o
+        WHERE o.status = 1
+        AND (
+            -- 超级管理员可以访问所有组织
+            EXISTS (
+                SELECT 1 FROM ums_admin_role_relation ar
+                JOIN ums_role r ON ar.role_id = r.id
+                WHERE ar.admin_id = #{adminId}
+                AND r.name = '超级管理员'
+            )
+            OR
+            -- 部门管理员可以访问其有权限的组织及下级组织
+            o.id IN (
+                SELECT ro.organization_id
+                FROM ums_admin_role_relation ar
+                JOIN ums_role_organization_relation ro ON ar.role_id = ro.role_id
+                WHERE ar.admin_id = #{adminId}
+                AND ro.scope = 0
+            )
+            OR
+            -- 部门管理员可以访问其有权限的组织及下级组织
+            o.id IN (
+                WITH RECURSIVE org_tree AS (
+                    SELECT ro.organization_id
+                    FROM ums_admin_role_relation ar
+                    JOIN ums_role_organization_relation ro ON ar.role_id = ro.role_id
+                    WHERE ar.admin_id = #{adminId}
+                    AND ro.scope = 1
+                    UNION ALL
+                    SELECT o.id
+                    FROM ums_organization o
+                    JOIN org_tree ot ON o.parent_id = ot.organization_id
+                )
+                SELECT organization_id FROM org_tree
+            )
+        )
+    </select>
+
+    <select id="getSubOrganizationIds" resultType="java.lang.Long">
+        WITH RECURSIVE org_tree AS (
+            SELECT #{organizationId} AS id
+            UNION ALL
+            SELECT o.id
+            FROM ums_organization o
+            JOIN org_tree ot ON o.parent_id = ot.id
+        )
+        SELECT id FROM org_tree
+    </select>
+
+    <select id="getAdminRoleIds" resultType="java.lang.Long">
+        SELECT role_id
+        FROM ums_admin_role_relation
+        WHERE admin_id = #{adminId}
+    </select>
+
+</mapper>

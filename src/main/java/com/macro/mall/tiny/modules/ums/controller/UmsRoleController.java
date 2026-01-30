@@ -7,6 +7,7 @@ import com.macro.mall.tiny.modules.ums.model.UmsMenu;
 import com.macro.mall.tiny.modules.ums.model.UmsResource;
 import com.macro.mall.tiny.modules.ums.model.UmsRole;
 import com.macro.mall.tiny.modules.ums.service.UmsRoleService;
+import com.macro.mall.tiny.modules.ums.service.UmsRoleOrganizationRelationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +26,9 @@ import java.util.List;
 public class UmsRoleController {
     @Autowired
     private UmsRoleService roleService;
+    
+    @Autowired
+    private UmsRoleOrganizationRelationService roleOrganizationRelationService;
 
     @Operation(summary = "添加角色")
     @RequestMapping(value = "/create", method = RequestMethod.POST)
@@ -122,6 +126,25 @@ public class UmsRoleController {
     @ResponseBody
     public CommonResult allocResource(@RequestParam Long roleId, @RequestParam List<Long> resourceIds) {
         int count = roleService.allocResource(roleId, resourceIds);
+        return CommonResult.success(count);
+    }
+
+    @Operation(summary = "获取角色组织架构权限")
+    @RequestMapping(value = "/listOrganization/{roleId}", method = RequestMethod.GET)
+    @ResponseBody
+    public CommonResult<List<Long>> listOrganization(@PathVariable Long roleId) {
+        List<Long> organizationIds = roleOrganizationRelationService.getOrganizationIdsByRoleId(roleId);
+        return CommonResult.success(organizationIds);
+    }
+
+    @Operation(summary = "给角色分配组织架构权限")
+    @RequestMapping(value = "/allocOrganization", method = RequestMethod.POST)
+    @ResponseBody
+    public CommonResult allocOrganization(
+            @RequestParam Long roleId,
+            @RequestParam List<Long> organizationIds,
+            @RequestParam(defaultValue = "0") Integer scope) {
+        int count = roleOrganizationRelationService.allocOrganization(roleId, organizationIds, scope);
         return CommonResult.success(count);
     }
 

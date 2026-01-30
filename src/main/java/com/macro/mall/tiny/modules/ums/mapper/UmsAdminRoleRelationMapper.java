@@ -18,4 +18,10 @@ import java.util.List;
  */
 public interface UmsAdminRoleRelationMapper extends BaseMapper<UmsAdminRoleRelation> {
 
+    /**
+     * 获取管理员的角色ID列表
+     * @param adminId 管理员ID
+     * @return 角色ID列表
+     */
+    List<Long> getAdminRoleIds(@Param("adminId") Long adminId);
 }
