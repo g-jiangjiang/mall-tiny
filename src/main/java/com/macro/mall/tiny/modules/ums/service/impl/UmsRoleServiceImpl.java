@@ -6,11 +6,13 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.macro.mall.tiny.modules.ums.mapper.UmsMenuMapper;
+import com.macro.mall.tiny.modules.ums.mapper.UmsOrganizationMapper;
 import com.macro.mall.tiny.modules.ums.mapper.UmsResourceMapper;
 import com.macro.mall.tiny.modules.ums.mapper.UmsRoleMapper;
 import com.macro.mall.tiny.modules.ums.model.*;
 import com.macro.mall.tiny.modules.ums.service.UmsAdminCacheService;
 import com.macro.mall.tiny.modules.ums.service.UmsRoleMenuRelationService;
+import com.macro.mall.tiny.modules.ums.service.UmsRoleOrganizationRelationService;
 import com.macro.mall.tiny.modules.ums.service.UmsRoleResourceRelationService;
 import com.macro.mall.tiny.modules.ums.service.UmsRoleService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,9 +35,15 @@ public class UmsRoleServiceImpl extends ServiceImpl<UmsRoleMapper,UmsRole>implem
     @Autowired
     private UmsRoleResourceRelationService roleResourceRelationService;
     @Autowired
+    private UmsRoleOrganizationRelationService roleOrganizationRelationService;
+    
+    @Autowired
+    private UmsOrganizationMapper organizationMapper;
+    @Autowired
     private UmsMenuMapper menuMapper;
     @Autowired
     private UmsResourceMapper resourceMapper;
+    
     @Override
     public boolean create(UmsRole role) {
         role.setCreateTime(new Date());
@@ -48,6 +56,12 @@ public class UmsRoleServiceImpl extends ServiceImpl<UmsRoleMapper,UmsRole>implem
     public boolean delete(List<Long> ids) {
         boolean success = removeByIds(ids);
         adminCacheService.delResourceListByRoleIds(ids);
+        
+        // 删除角色相关的组织架构权限
+        for (Long roleId : ids) {
+            roleOrganizationRelationService.removeByRoleId(roleId);
+        }
+        
         return success;
     }
 
@@ -112,5 +126,50 @@ public class UmsRoleServiceImpl extends ServiceImpl<UmsRoleMapper,UmsRole>implem
         roleResourceRelationService.saveBatch(relationList);
         adminCacheService.delResourceListByRole(roleId);
         return resourceIds.size();
+    }
+
+    @Override
+    public boolean hasOrganizationPermission(Long roleId, Long organizationId) {
+        // 检查是否是超级管理员
+        UmsRole role = getById(roleId);
+        if (role != null && "超级管理员".equals(role.getName())) {
+            return true;
+        }
+        
+        // 检查角色是否有该组织架构的权限
+        List<UmsRoleOrganizationRelation> relations = roleOrganizationRelationService
+                .lambdaQuery()
+                .eq(UmsRoleOrganizationRelation::getRoleId, roleId)
+                .list();
+        
+        for (UmsRoleOrganizationRelation relation : relations) {
+            if (relation.getOrganizationId().equals(organizationId)) {
+                return true;
+            }
+            
+            // 如果scope为1（包含下级组织），检查该组织是否是权限组织的下级
+            if (relation.getScope() == 1) {
+                List<Long> subOrgIds = organizationMapper.getSubOrganizationIds(relation.getOrganizationId());
+                if (subOrgIds.contains(organizationId)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+
+    @Override
+    public List<Long> getOrganizationPermissionScope(Long roleId) {
+        // 超级管理员可以访问所有组织
+        UmsRole role = getById(roleId);
+        if (role != null && "超级管理员".equals(role.getName())) {
+            // 返回所有组织ID的逻辑需要在OrganizationService中实现
+            // 这里暂时返回空列表，实际使用时需要实现
+            return new ArrayList<>();
+        }
+        
+        // 获取角色直接关联的组织ID
+        return roleOrganizationRelationService.getOrganizationIdsByRoleId(roleId);
     }
 }

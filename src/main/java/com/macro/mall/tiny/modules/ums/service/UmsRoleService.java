@@ -55,4 +55,19 @@ public interface UmsRoleService extends IService<UmsRole> {
      */
     @Transactional
     int allocResource(Long roleId, List<Long> resourceIds);
+
+    /**
+     * 检查角色是否有指定组织架构的权限
+     * @param roleId 角色ID
+     * @param organizationId 组织架构ID
+     * @return 是否有权限
+     */
+    boolean hasOrganizationPermission(Long roleId, Long organizationId);
+
+    /**
+     * 获取角色的组织架构权限范围
+     * @param roleId 角色ID
+     * @return 组织架构ID列表
+     */
+    List<Long> getOrganizationPermissionScope(Long roleId);
 }
