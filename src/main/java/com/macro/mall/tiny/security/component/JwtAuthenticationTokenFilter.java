@@ -1,5 +1,6 @@
 package com.macro.mall.tiny.security.component;
 
+import com.macro.mall.tiny.modules.ums.service.UmsLoginSecurityService;
 import com.macro.mall.tiny.security.util.JwtTokenUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +30,8 @@ public class JwtAuthenticationTokenFilter extends OncePerRequestFilter {
     private UserDetailsService userDetailsService;
     @Autowired
     private JwtTokenUtil jwtTokenUtil;
+    @Autowired
+    private UmsLoginSecurityService loginSecurityService;
     @Value("${jwt.tokenHeader}")
     private String tokenHeader;
     @Value("${jwt.tokenHead}")
@@ -45,11 +48,17 @@ public class JwtAuthenticationTokenFilter extends OncePerRequestFilter {
             LOGGER.info("checking username:{}", username);
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
+                // 验证JWT Token有效性
                 if (jwtTokenUtil.validateToken(authToken, userDetails)) {
-                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    LOGGER.info("authenticated user:{}", username);
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    // 互斥登录验证：检查当前token是否为最新有效token
+                    if (loginSecurityService.validateUserToken(username, authToken)) {
+                        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        LOGGER.info("authenticated user:{}", username);
+                        SecurityContextHolder.getContext().setAuthentication(authentication);
+                    } else {
+                        LOGGER.warn("token已被废弃，用户已在其他地方登录: {}", username);
+                    }
                 }
             }
         }
