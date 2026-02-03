@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.modules.pms.mapper.PmsSpuMapper">
+
+    <!-- 根据类目ID查询SPU列表 -->
+    <select id="selectByCategoryId" resultType="com.macro.mall.tiny.modules.pms.model.PmsSpu">
+        SELECT *
+        FROM pms_spu
+        WHERE category_id = #{categoryId}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 根据品牌ID查询SPU列表 -->
+    <select id="selectByBrandId" resultType="com.macro.mall.tiny.modules.pms.model.PmsSpu">
+        SELECT *
+        FROM pms_spu
+        WHERE brand_id = #{brandId}
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

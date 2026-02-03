@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.modules.pms.mapper.PmsCategoryMapper">
+
+    <!-- 根据父ID查询子类目列表 -->
+    <select id="selectByParentId" resultType="com.macro.mall.tiny.modules.pms.model.PmsCategory">
+        SELECT *
+        FROM pms_category
+        WHERE parent_id = #{parentId}
+        AND status = 1
+        ORDER BY sort ASC
+    </select>
+
+</mapper>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.modules.pms.mapper.PmsSpuAttributeMapper">
+
+    <!-- 根据SPU ID删除关联 -->
+    <delete id="deleteBySpuId">
+        DELETE FROM pms_spu_attribute WHERE spu_id = #{spuId}
+    </delete>
+
+    <!-- 批量插入 -->
+    <insert id="batchInsert">
+        INSERT INTO pms_spu_attribute (spu_id, attribute_id)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.spuId}, #{item.attributeId})
+        </foreach>
+    </insert>
+
+</mapper>
