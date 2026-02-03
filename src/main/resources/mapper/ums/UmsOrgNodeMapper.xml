@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.modules.ums.mapper.UmsOrgNodeMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.macro.mall.tiny.modules.ums.model.UmsOrgNode">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="level" property="level"/>
+        <result column="parent_id" property="parentId"/>
+        <result column="sort" property="sort"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="status" property="status"/>
+        <result column="node_type" property="nodeType"/>
+        <result column="note" property="note"/>
+    </resultMap>
+
+    <!-- 根据层级获取节点列表 -->
+    <select id="selectByLevel" resultMap="BaseResultMap">
+        SELECT
+            id,
+            name,
+            level,
+            parent_id,
+            sort,
+            create_time,
+            update_time,
+            status,
+            node_type,
+            note
+        FROM ums_org_node
+        WHERE level = #{level}
+          AND status = 1
+        ORDER BY sort ASC, id ASC
+    </select>
+
+    <!-- 根据父级ID获取子节点列表 -->
+    <select id="selectByParentId" resultMap="BaseResultMap">
+        SELECT
+            id,
+            name,
+            level,
+            parent_id,
+            sort,
+            create_time,
+            update_time,
+            status,
+            node_type,
+            note
+        FROM ums_org_node
+        WHERE parent_id = #{parentId}
+          AND status = 1
+        ORDER BY sort ASC, id ASC
+    </select>
+
+    <!-- 获取所有启用的节点 -->
+    <select id="selectAllEnabled" resultMap="BaseResultMap">
+        SELECT
+            id,
+            name,
+            level,
+            parent_id,
+            sort,
+            create_time,
+            update_time,
+            status,
+            node_type,
+            note
+        FROM ums_org_node
+        WHERE status = 1
+        ORDER BY level ASC, sort ASC, id ASC
+    </select>
+
+</mapper>
