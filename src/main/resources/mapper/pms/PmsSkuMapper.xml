@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.modules.pms.mapper.PmsSkuMapper">
+
+    <!-- 根据SPU ID查询SKU列表 -->
+    <select id="selectBySpuId" resultType="com.macro.mall.tiny.modules.pms.model.PmsSku">
+        SELECT *
+        FROM pms_sku
+        WHERE spu_id = #{spuId}
+        ORDER BY sku_code ASC
+    </select>
+
+    <!-- 批量插入SKU -->
+    <insert id="batchInsert">
+        INSERT INTO pms_sku (spu_id, sku_code, price, stock, specifications, main_image, status, create_time, update_time)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.spuId}, #{item.skuCode}, #{item.price}, #{item.stock}, #{item.specifications},
+             #{item.mainImage}, #{item.status}, #{item.createTime}, #{item.updateTime})
+        </foreach>
+    </insert>
+
+    <!-- 批量更新SKU -->
+    <update id="batchUpdate">
+        <foreach collection="list" item="item" separator=";">
+            UPDATE pms_sku
+            <set>
+                <if test="item.skuCode != null">sku_code = #{item.skuCode},</if>
+                <if test="item.price != null">price = #{item.price},</if>
+                <if test="item.stock != null">stock = #{item.stock},</if>
+                <if test="item.specifications != null">specifications = #{item.specifications},</if>
+                <if test="item.mainImage != null">main_image = #{item.mainImage},</if>
+                <if test="item.status != null">status = #{item.status},</if>
+                update_time = #{item.updateTime}
+            </set>
+            WHERE id = #{item.id}
+        </foreach>
+    </update>
+
+    <!-- 根据SPU ID删除SKU -->
+    <delete id="deleteBySpuId">
+        DELETE FROM pms_sku WHERE spu_id = #{spuId}
+    </delete>
+
+</mapper>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.modules.pms.mapper.PmsAttributeMapper">
+
+    <!-- 根据SPU ID查询规格列表 -->
+    <select id="selectBySpuId" resultType="com.macro.mall.tiny.modules.pms.model.PmsAttribute">
+        SELECT a.*
+        FROM pms_attribute a
+        INNER JOIN pms_spu_attribute sa ON a.id = sa.attribute_id
+        WHERE sa.spu_id = #{spuId}
+        AND a.status = 1
+        ORDER BY a.sort ASC
+    </select>
+
+</mapper>

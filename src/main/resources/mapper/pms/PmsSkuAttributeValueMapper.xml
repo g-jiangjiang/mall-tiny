@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.modules.pms.mapper.PmsSkuAttributeValueMapper">
+
+    <!-- 根据SKU ID删除关联 -->
+    <delete id="deleteBySkuId">
+        DELETE FROM pms_sku_attribute_value WHERE sku_id = #{skuId}
+    </delete>
+
+    <!-- 批量插入 -->
+    <insert id="batchInsert">
+        INSERT INTO pms_sku_attribute_value (sku_id, attribute_id, attribute_value_id)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.skuId}, #{item.attributeId}, #{item.attributeValueId})
+        </foreach>
+    </insert>
+
+    <!-- 根据SKU ID列表删除关联 -->
+    <delete id="deleteBySkuIds">
+        DELETE FROM pms_sku_attribute_value WHERE sku_id IN
+        <foreach collection="skuIds" item="skuId" open="(" separator="," close=")">
+            #{skuId}
+        </foreach>
+    </delete>
+
+</mapper>
