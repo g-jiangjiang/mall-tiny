@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.macro.mall.tiny.modules.ums.mapper.UmsRoleOrgMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.macro.mall.tiny.modules.ums.model.UmsRoleOrg">
+        <id column="id" property="id"/>
+        <result column="role_id" property="roleId"/>
+        <result column="org_id" property="orgId"/>
+        <result column="org_name" property="orgName"/>
+        <result column="org_level" property="orgLevel"/>
+        <result column="parent_id" property="parentId"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="config_type" property="configType"/>
+        <result column="scope_type" property="scopeType"/>
+    </resultMap>
+
+    <!-- 根据角色ID获取组织架构配置 -->
+    <select id="selectByRoleId" resultMap="BaseResultMap">
+        SELECT
+            id,
+            role_id,
+            org_id,
+            org_name,
+            org_level,
+            parent_id,
+            create_time,
+            update_time,
+            config_type,
+            scope_type
+        FROM ums_role_org
+        WHERE role_id = #{roleId}
+    </select>
+
+    <!-- 批量插入角色组织架构关系 -->
+    <insert id="batchInsert">
+        INSERT INTO ums_role_org (
+            role_id,
+            org_id,
+            org_name,
+            org_level,
+            parent_id,
+            create_time,
+            update_time,
+            config_type,
+            scope_type
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+                #{item.roleId},
+                #{item.orgId},
+                #{item.orgName},
+                #{item.orgLevel},
+                #{item.parentId},
+                NOW(),
+                NOW(),
+                #{item.configType},
+                #{item.scopeType}
+            )
+        </foreach>
+    </insert>
+
+    <!-- 根据角色ID删除组织架构关系 -->
+    <delete id="deleteByRoleId">
+        DELETE FROM ums_role_org WHERE role_id = #{roleId}
+    </delete>
+
+    <!-- 获取角色配置的组织架构ID列表 -->
+    <select id="selectOrgIdsByRoleId" resultType="java.lang.Long">
+        SELECT org_id
+        FROM ums_role_org
+        WHERE role_id = #{roleId}
+    </select>
+
+</mapper>

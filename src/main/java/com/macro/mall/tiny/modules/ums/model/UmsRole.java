@@ -45,5 +45,8 @@ public class UmsRole implements Serializable {
 
     private Integer sort;
 
+    @Schema(title = "角色类型：0->普通角色；1->超级管理员；2->部门管理员")
+    private Integer roleType;
+
 
 }
