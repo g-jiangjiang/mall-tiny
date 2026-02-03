@@ -13,13 +13,16 @@ import com.macro.mall.tiny.modules.ums.service.UmsAdminService;
 import com.macro.mall.tiny.modules.ums.service.UmsRoleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.io.IOException;
 import java.security.Principal;
 import java.util.HashMap;
 import java.util.List;
@@ -107,8 +110,19 @@ public class UmsAdminController {
     @Operation(summary = "登出功能")
     @RequestMapping(value = "/logout", method = RequestMethod.POST)
     @ResponseBody
-    public CommonResult logout() {
+    public CommonResult logout(Principal principal) {
+        if (principal != null) {
+            adminService.logout(principal.getName());
+        }
         return CommonResult.success(null);
+    }
+
+    @Operation(summary = "导出用户列表（仅超级管理员）")
+    @RequestMapping(value = "/export", method = RequestMethod.GET)
+    @ResponseBody
+    public void exportAdminList(@RequestParam(value = "keyword", required = false) String keyword,
+                                HttpServletResponse response) throws IOException {
+        adminService.exportAdminList(response, keyword);
     }
 
     @Operation(summary ="根据用户名或姓名分页获取用户列表")

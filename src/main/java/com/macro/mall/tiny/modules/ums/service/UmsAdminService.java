@@ -2,14 +2,17 @@ package com.macro.mall.tiny.modules.ums.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.macro.mall.tiny.modules.ums.dto.UmsAdminExportDto;
 import com.macro.mall.tiny.modules.ums.dto.UmsAdminParam;
 import com.macro.mall.tiny.modules.ums.dto.UpdateAdminPasswordParam;
 import com.macro.mall.tiny.modules.ums.model.UmsAdmin;
 import com.macro.mall.tiny.modules.ums.model.UmsResource;
 import com.macro.mall.tiny.modules.ums.model.UmsRole;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
 import java.util.List;
 
 /**
@@ -86,4 +89,17 @@ public interface UmsAdminService extends IService<UmsAdmin> {
      * 获取缓存服务
      */
     UmsAdminCacheService getCacheService();
+
+    /**
+     * 导出用户列表（仅超级管理员）
+     * @param response HTTP响应
+     * @param keyword 搜索关键词
+     */
+    void exportAdminList(HttpServletResponse response, String keyword) throws IOException;
+
+    /**
+     * 登出功能
+     * @param username 用户名
+     */
+    void logout(String username);
 }

@@ -1,0 +1,683 @@
+diff --git a/pom.xml b/pom.xml
+index abc3919..67a5380 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -11,7 +11,7 @@
+     <properties>
+         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+-        <java.version>1.8</java.version>
++        <java.version>17</java.version>
+         <skipTests>true</skipTests>
+         <docker.host>http://192.168.3.101:2375</docker.host>
+         <docker.maven.plugin.version>0.40.0</docker.maven.plugin.version>
+@@ -23,6 +23,8 @@
+         <springdoc-openapi.version>2.0.2</springdoc-openapi.version>
+         <velocity.version>2.3</velocity.version>
+         <jaxb-api.version>2.3.1</jaxb-api.version>
++        <easyexcel.version>3.3.2</easyexcel.version>
++        <lombok.version>1.18.30</lombok.version>
+     </properties>
+ 
+     <parent>
+@@ -99,7 +101,8 @@
+         <dependency>
+             <groupId>org.projectlombok</groupId>
+             <artifactId>lombok</artifactId>
+-            <optional>true</optional>
++            <version>${lombok.version}</version>
++            <scope>provided</scope>
+         </dependency>
+         <!--SpringBoot配置处理-->
+         <dependency>
+@@ -131,6 +134,12 @@
+             <artifactId>jaxb-api</artifactId>
+             <version>${jaxb-api.version}</version>
+         </dependency>
++        <!--EasyExcel依赖-->
++        <dependency>
++            <groupId>com.alibaba</groupId>
++            <artifactId>easyexcel</artifactId>
++            <version>${easyexcel.version}</version>
++        </dependency>
+     </dependencies>
+ 
+     <build>
+diff --git a/src/main/java/com/macro/mall/tiny/config/LoginSecurityConfig.java b/src/main/java/com/macro/mall/tiny/config/LoginSecurityConfig.java
+new file mode 100644
+index 0000000..e83cbbc
+--- /dev/null
++++ b/src/main/java/com/macro/mall/tiny/config/LoginSecurityConfig.java
+@@ -0,0 +1,32 @@
++package com.macro.mall.tiny.config;
++
++import lombok.Getter;
++import lombok.Setter;
++import org.springframework.boot.context.properties.ConfigurationProperties;
++import org.springframework.stereotype.Component;
++
++/**
++ * 登录安全配置类
++ * Created by macro on 2024/01/01.
++ */
++@Getter
++@Setter
++@Component
++@ConfigurationProperties(prefix = "login")
++public class LoginSecurityConfig {
++
++    /**
++     * 最大登录失败次数
++     */
++    private Integer maxFailAttempts = 5;
++
++    /**
++     * 锁定时间（分钟）
++     */
++    private Integer lockDuration = 30;
++
++    /**
++     * 失败统计时间窗口（分钟）
++     */
++    private Integer failWindow = 10;
++}
+diff --git a/src/main/java/com/macro/mall/tiny/modules/ums/controller/UmsAdminController.java b/src/main/java/com/macro/mall/tiny/modules/ums/controller/UmsAdminController.java
+index 7194460..c3d9993 100644
+--- a/src/main/java/com/macro/mall/tiny/modules/ums/controller/UmsAdminController.java
++++ b/src/main/java/com/macro/mall/tiny/modules/ums/controller/UmsAdminController.java
+@@ -13,13 +13,16 @@ import com.macro.mall.tiny.modules.ums.service.UmsAdminService;
+ import com.macro.mall.tiny.modules.ums.service.UmsRoleService;
+ import io.swagger.v3.oas.annotations.Operation;
+ import io.swagger.v3.oas.annotations.tags.Tag;
++import jakarta.servlet.http.HttpServletResponse;
+ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.beans.factory.annotation.Value;
++import org.springframework.security.access.prepost.PreAuthorize;
+ import org.springframework.stereotype.Controller;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.*;
+ 
+ import jakarta.servlet.http.HttpServletRequest;
++import java.io.IOException;
+ import java.security.Principal;
+ import java.util.HashMap;
+ import java.util.List;
+@@ -107,10 +110,21 @@ public class UmsAdminController {
+     @Operation(summary = "登出功能")
+     @RequestMapping(value = "/logout", method = RequestMethod.POST)
+     @ResponseBody
+-    public CommonResult logout() {
++    public CommonResult logout(Principal principal) {
++        if (principal != null) {
++            adminService.logout(principal.getName());
++        }
+         return CommonResult.success(null);
+     }
+ 
++    @Operation(summary = "导出用户列表（仅超级管理员）")
++    @RequestMapping(value = "/export", method = RequestMethod.GET)
++    @ResponseBody
++    public void exportAdminList(@RequestParam(value = "keyword", required = false) String keyword,
++                                HttpServletResponse response) throws IOException {
++        adminService.exportAdminList(response, keyword);
++    }
++
+     @Operation(summary ="根据用户名或姓名分页获取用户列表")
+     @RequestMapping(value = "/list", method = RequestMethod.GET)
+     @ResponseBody
+diff --git a/src/main/java/com/macro/mall/tiny/modules/ums/dto/UmsAdminExportDto.java b/src/main/java/com/macro/mall/tiny/modules/ums/dto/UmsAdminExportDto.java
+new file mode 100644
+index 0000000..9f167b1
+--- /dev/null
++++ b/src/main/java/com/macro/mall/tiny/modules/ums/dto/UmsAdminExportDto.java
+@@ -0,0 +1,48 @@
++package com.macro.mall.tiny.modules.ums.dto;
++
++import com.alibaba.excel.annotation.ExcelProperty;
++import com.alibaba.excel.annotation.write.style.ColumnWidth;
++import com.alibaba.excel.converters.date.DateStringConverter;
++import lombok.Data;
++
++import java.util.Date;
++
++/**
++ * 用户导出DTO
++ * Created by macro on 2024/01/01.
++ */
++@Data
++public class UmsAdminExportDto {
++
++    @ExcelProperty("用户ID")
++    @ColumnWidth(10)
++    private Long id;
++
++    @ExcelProperty("用户名")
++    @ColumnWidth(20)
++    private String username;
++
++    @ExcelProperty("昵称")
++    @ColumnWidth(20)
++    private String nickName;
++
++    @ExcelProperty("邮箱")
++    @ColumnWidth(25)
++    private String email;
++
++    @ExcelProperty("备注")
++    @ColumnWidth(30)
++    private String note;
++
++    @ExcelProperty(value = "创建时间", converter = DateStringConverter.class)
++    @ColumnWidth(20)
++    private Date createTime;
++
++    @ExcelProperty(value = "最后登录时间", converter = DateStringConverter.class)
++    @ColumnWidth(20)
++    private Date loginTime;
++
++    @ExcelProperty("状态")
++    @ColumnWidth(10)
++    private String statusText;
++}
+diff --git a/src/main/java/com/macro/mall/tiny/modules/ums/service/UmsAdminService.java b/src/main/java/com/macro/mall/tiny/modules/ums/service/UmsAdminService.java
+index fb5586b..6172b20 100644
+--- a/src/main/java/com/macro/mall/tiny/modules/ums/service/UmsAdminService.java
++++ b/src/main/java/com/macro/mall/tiny/modules/ums/service/UmsAdminService.java
+@@ -2,14 +2,17 @@ package com.macro.mall.tiny.modules.ums.service;
+ 
+ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+ import com.baomidou.mybatisplus.extension.service.IService;
++import com.macro.mall.tiny.modules.ums.dto.UmsAdminExportDto;
+ import com.macro.mall.tiny.modules.ums.dto.UmsAdminParam;
+ import com.macro.mall.tiny.modules.ums.dto.UpdateAdminPasswordParam;
+ import com.macro.mall.tiny.modules.ums.model.UmsAdmin;
+ import com.macro.mall.tiny.modules.ums.model.UmsResource;
+ import com.macro.mall.tiny.modules.ums.model.UmsRole;
++import jakarta.servlet.http.HttpServletResponse;
+ import org.springframework.security.core.userdetails.UserDetails;
+ import org.springframework.transaction.annotation.Transactional;
+ 
++import java.io.IOException;
+ import java.util.List;
+ 
+ /**
+@@ -86,4 +89,17 @@ public interface UmsAdminService extends IService<UmsAdmin> {
+      * 获取缓存服务
+      */
+     UmsAdminCacheService getCacheService();
++
++    /**
++     * 导出用户列表（仅超级管理员）
++     * @param response HTTP响应
++     * @param keyword 搜索关键词
++     */
++    void exportAdminList(HttpServletResponse response, String keyword) throws IOException;
++
++    /**
++     * 登出功能
++     * @param username 用户名
++     */
++    void logout(String username);
+ }
+diff --git a/src/main/java/com/macro/mall/tiny/modules/ums/service/UmsLoginSecurityService.java b/src/main/java/com/macro/mall/tiny/modules/ums/service/UmsLoginSecurityService.java
+new file mode 100644
+index 0000000..8911ad0
+--- /dev/null
++++ b/src/main/java/com/macro/mall/tiny/modules/ums/service/UmsLoginSecurityService.java
+@@ -0,0 +1,55 @@
++package com.macro.mall.tiny.modules.ums.service;
++
++/**
++ * 登录安全Service
++ * Created by macro on 2024/01/01.
++ */
++public interface UmsLoginSecurityService {
++
++    /**
++     * 检查账号是否被锁定
++     * @param username 用户名
++     * @return true-已锁定，false-未锁定
++     */
++    boolean isAccountLocked(String username);
++
++    /**
++     * 记录登录失败次数
++     * @param username 用户名
++     */
++    void recordLoginFail(String username);
++
++    /**
++     * 清除登录失败记录
++     * @param username 用户名
++     */
++    void clearLoginFail(String username);
++
++    /**
++     * 获取剩余锁定时间（秒）
++     * @param username 用户名
++     * @return 剩余锁定时间，未锁定返回0
++     */
++    long getRemainingLockTime(String username);
++
++    /**
++     * 存储用户Token（用于互斥登录）
++     * @param username 用户名
++     * @param token JWT Token
++     */
++    void storeUserToken(String username, String token);
++
++    /**
++     * 验证用户Token是否有效
++     * @param username 用户名
++     * @param token JWT Token
++     * @return true-有效，false-无效（已被挤下线）
++     */
++    boolean validateUserToken(String username, String token);
++
++    /**
++     * 移除用户Token
++     * @param username 用户名
++     */
++    void removeUserToken(String username);
++}
+diff --git a/src/main/java/com/macro/mall/tiny/modules/ums/service/impl/UmsAdminServiceImpl.java b/src/main/java/com/macro/mall/tiny/modules/ums/service/impl/UmsAdminServiceImpl.java
+index 0c39356..447c6a7 100644
+--- a/src/main/java/com/macro/mall/tiny/modules/ums/service/impl/UmsAdminServiceImpl.java
++++ b/src/main/java/com/macro/mall/tiny/modules/ums/service/impl/UmsAdminServiceImpl.java
+@@ -2,12 +2,14 @@ package com.macro.mall.tiny.modules.ums.service.impl;
+ 
+ import cn.hutool.core.collection.CollUtil;
+ import cn.hutool.core.util.StrUtil;
++import com.alibaba.excel.EasyExcel;
+ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+ import com.macro.mall.tiny.common.exception.Asserts;
+ import com.macro.mall.tiny.domain.AdminUserDetails;
++import com.macro.mall.tiny.modules.ums.dto.UmsAdminExportDto;
+ import com.macro.mall.tiny.modules.ums.dto.UmsAdminParam;
+ import com.macro.mall.tiny.modules.ums.dto.UpdateAdminPasswordParam;
+ import com.macro.mall.tiny.modules.ums.mapper.UmsAdminLoginLogMapper;
+@@ -18,6 +20,7 @@ import com.macro.mall.tiny.modules.ums.model.*;
+ import com.macro.mall.tiny.modules.ums.service.UmsAdminCacheService;
+ import com.macro.mall.tiny.modules.ums.service.UmsAdminRoleRelationService;
+ import com.macro.mall.tiny.modules.ums.service.UmsAdminService;
++import com.macro.mall.tiny.modules.ums.service.UmsLoginSecurityService;
+ import com.macro.mall.tiny.security.util.JwtTokenUtil;
+ import com.macro.mall.tiny.security.util.SpringUtil;
+ import org.slf4j.Logger;
+@@ -36,9 +39,17 @@ import org.springframework.web.context.request.RequestContextHolder;
+ import org.springframework.web.context.request.ServletRequestAttributes;
+ 
+ import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import org.springframework.security.core.Authentication;
++import org.springframework.security.core.context.SecurityContextHolder;
++
++import java.io.IOException;
++import java.io.UnsupportedEncodingException;
++import java.net.URLEncoder;
+ import java.util.ArrayList;
+ import java.util.Date;
+ import java.util.List;
++import java.util.stream.Collectors;
+ 
+ /**
+  * 后台管理员管理Service实现类
+@@ -59,6 +70,8 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
+     private UmsRoleMapper roleMapper;
+     @Autowired
+     private UmsResourceMapper resourceMapper;
++    @Autowired
++    private UmsLoginSecurityService loginSecurityService;
+ 
+     @Override
+     public UmsAdmin getAdminByUsername(String username) {
+@@ -98,19 +111,37 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
+     @Override
+     public String login(String username, String password) {
+         String token = null;
+-        //密码需要客户端加密后传递
+         try {
++            // 检查账号是否被锁定
++            if (loginSecurityService.isAccountLocked(username)) {
++                long remainingTime = loginSecurityService.getRemainingLockTime(username);
++                Asserts.fail("账号已被锁定，请" + (remainingTime / 60 + 1) + "分钟后重试");
++            }
++
+             UserDetails userDetails = loadUserByUsername(username);
+             if(!passwordEncoder.matches(password,userDetails.getPassword())){
++                // 记录登录失败
++                loginSecurityService.recordLoginFail(username);
++                // 检查锁定状态并提示
++                if (loginSecurityService.isAccountLocked(username)) {
++                    Asserts.fail("登录错误次数过多，账号已被锁定30分钟");
++                }
+                 Asserts.fail("密码不正确");
+             }
+             if(!userDetails.isEnabled()){
+                 Asserts.fail("帐号已被禁用");
+             }
++
++            // 登录成功，清除失败记录
++            loginSecurityService.clearLoginFail(username);
++
+             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+             SecurityContextHolder.getContext().setAuthentication(authentication);
+             token = jwtTokenUtil.generateToken(userDetails);
+-//            updateLoginTimeByUsername(username);
++
++            // 存储用户Token（互斥登录）
++            loginSecurityService.storeUserToken(username, token);
++
+             insertLoginLog(username);
+         } catch (AuthenticationException e) {
+             LOGGER.warn("登录异常:{}", e.getMessage());
+@@ -268,4 +299,81 @@ public class UmsAdminServiceImpl extends ServiceImpl<UmsAdminMapper,UmsAdmin> im
+     public UmsAdminCacheService getCacheService() {
+         return SpringUtil.getBean(UmsAdminCacheService.class);
+     }
++
++    @Override
++    public void exportAdminList(HttpServletResponse response, String keyword) throws IOException {
++        // 获取当前登录用户
++        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
++        if (authentication == null || !authentication.isAuthenticated()) {
++            Asserts.fail("未登录或登录已过期");
++        }
++        String currentUsername = authentication.getName();
++        UmsAdmin currentAdmin = getAdminByUsername(currentUsername);
++        if (currentAdmin == null) {
++            Asserts.fail("当前用户不存在");
++        }
++
++        // 检查是否为超级管理员（角色ID为5）
++        List<UmsRole> roleList = getRoleList(currentAdmin.getId());
++        boolean isSuperAdmin = roleList.stream().anyMatch(role -> role.getId() != null && role.getId() == 5);
++        if (!isSuperAdmin) {
++            Asserts.fail("仅超级管理员可导出用户列表");
++        }
++
++        // 查询所有用户（不分页）
++        QueryWrapper<UmsAdmin> wrapper = new QueryWrapper<>();
++        LambdaQueryWrapper<UmsAdmin> lambda = wrapper.lambda();
++        if(StrUtil.isNotEmpty(keyword)){
++            lambda.like(UmsAdmin::getUsername,keyword);
++            lambda.or().like(UmsAdmin::getNickName,keyword);
++        }
++        List<UmsAdmin> adminList = list(wrapper);
++
++        // 转换为导出DTO并脱敏
++        List<UmsAdminExportDto> exportList = adminList.stream().map(admin -> {
++            UmsAdminExportDto dto = new UmsAdminExportDto();
++            dto.setId(admin.getId());
++            dto.setUsername(admin.getUsername());
++            dto.setNickName(admin.getNickName());
++            // 邮箱脱敏
++            dto.setEmail(desensitizeEmail(admin.getEmail()));
++            dto.setNote(admin.getNote());
++            dto.setCreateTime(admin.getCreateTime());
++            dto.setLoginTime(admin.getLoginTime());
++            dto.setStatusText(admin.getStatus() != null && admin.getStatus() == 1 ? "启用" : "禁用");
++            return dto;
++        }).collect(Collectors.toList());
++
++        // 设置响应头
++        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
++        response.setCharacterEncoding("utf-8");
++        String fileName = URLEncoder.encode("用户列表_" + System.currentTimeMillis(), "UTF-8").replaceAll("\\+", "%20");
++        response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
++
++        // 写入数据
++        EasyExcel.write(response.getOutputStream(), UmsAdminExportDto.class)
++                .sheet("用户列表")
++                .doWrite(exportList);
++    }
++
++    @Override
++    public void logout(String username) {
++        // 移除用户Token，使当前token失效
++        loginSecurityService.removeUserToken(username);
++    }
++
++    /**
++     * 邮箱脱敏
++     * 示例：example@gmail.com -> ex***@gmail.com
++     */
++    private String desensitizeEmail(String email) {
++        if (StrUtil.isBlank(email) || !email.contains("@")) {
++            return email;
++        }
++        String[] parts = email.split("@");
++        if (parts[0].length() <= 2) {
++            return "***@" + parts[1];
++        }
++        return parts[0].substring(0, 2) + "***@" + parts[1];
++    }
+ }
+diff --git a/src/main/java/com/macro/mall/tiny/modules/ums/service/impl/UmsLoginSecurityServiceImpl.java b/src/main/java/com/macro/mall/tiny/modules/ums/service/impl/UmsLoginSecurityServiceImpl.java
+new file mode 100644
+index 0000000..f52cf9a
+--- /dev/null
++++ b/src/main/java/com/macro/mall/tiny/modules/ums/service/impl/UmsLoginSecurityServiceImpl.java
+@@ -0,0 +1,121 @@
++package com.macro.mall.tiny.modules.ums.service.impl;
++
++import com.macro.mall.tiny.common.service.RedisService;
++import com.macro.mall.tiny.config.LoginSecurityConfig;
++import com.macro.mall.tiny.modules.ums.service.UmsLoginSecurityService;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.beans.factory.annotation.Value;
++import org.springframework.stereotype.Service;
++
++import java.util.concurrent.TimeUnit;
++
++/**
++ * 登录安全Service实现类
++ * Created by macro on 2024/01/01.
++ */
++@Service
++public class UmsLoginSecurityServiceImpl implements UmsLoginSecurityService {
++
++    @Autowired
++    private RedisService redisService;
++
++    @Autowired
++    private LoginSecurityConfig loginSecurityConfig;
++
++    @Value("${redis.database}")
++    private String redisDatabase;
++
++    @Value("${redis.key.loginFail}")
++    private String loginFailKey;
++
++    @Value("${redis.key.loginLock}")
++    private String loginLockKey;
++
++    @Value("${redis.key.userToken}")
++    private String userTokenKey;
++
++    @Value("${redis.expire.loginFail}")
++    private Long loginFailExpire;
++
++    @Value("${redis.expire.loginLock}")
++    private Long loginLockExpire;
++
++    @Value("${jwt.expiration}")
++    private Long tokenExpiration;
++
++    @Override
++    public boolean isAccountLocked(String username) {
++        String lockKey = buildLockKey(username);
++        return redisService.hasKey(lockKey);
++    }
++
++    @Override
++    public void recordLoginFail(String username) {
++        String failKey = buildFailKey(username);
++        String lockKey = buildLockKey(username);
++
++        // 增加失败次数
++        Long failCount = redisService.incr(failKey, 1);
++
++        // 设置失败计数过期时间（只在第一次设置）
++        if (failCount != null && failCount == 1) {
++            redisService.expire(failKey, loginFailExpire);
++        }
++
++        // 检查是否达到最大失败次数
++        if (failCount != null && failCount >= loginSecurityConfig.getMaxFailAttempts()) {
++            // 锁定账号
++            redisService.set(lockKey, "locked", loginLockExpire);
++            // 清除失败计数
++            redisService.del(failKey);
++        }
++    }
++
++    @Override
++    public void clearLoginFail(String username) {
++        String failKey = buildFailKey(username);
++        redisService.del(failKey);
++    }
++
++    @Override
++    public long getRemainingLockTime(String username) {
++        String lockKey = buildLockKey(username);
++        Long expire = redisService.getExpire(lockKey);
++        return expire != null ? expire : 0;
++    }
++
++    @Override
++    public void storeUserToken(String username, String token) {
++        String tokenKey = buildTokenKey(username);
++        // Token有效期与JWT一致
++        redisService.set(tokenKey, token, tokenExpiration);
++    }
++
++    @Override
++    public boolean validateUserToken(String username, String token) {
++        String tokenKey = buildTokenKey(username);
++        Object storedToken = redisService.get(tokenKey);
++        if (storedToken == null) {
++            return false;
++        }
++        return storedToken.equals(token);
++    }
++
++    @Override
++    public void removeUserToken(String username) {
++        String tokenKey = buildTokenKey(username);
++        redisService.del(tokenKey);
++    }
++
++    private String buildFailKey(String username) {
++        return redisDatabase + ":" + loginFailKey + ":" + username;
++    }
++
++    private String buildLockKey(String username) {
++        return redisDatabase + ":" + loginLockKey + ":" + username;
++    }
++
++    private String buildTokenKey(String username) {
++        return redisDatabase + ":" + userTokenKey + ":" + username;
++    }
++}
+diff --git a/src/main/java/com/macro/mall/tiny/security/component/JwtAuthenticationTokenFilter.java b/src/main/java/com/macro/mall/tiny/security/component/JwtAuthenticationTokenFilter.java
+index 4f7348a..93736fd 100644
+--- a/src/main/java/com/macro/mall/tiny/security/component/JwtAuthenticationTokenFilter.java
++++ b/src/main/java/com/macro/mall/tiny/security/component/JwtAuthenticationTokenFilter.java
+@@ -1,5 +1,6 @@
+ package com.macro.mall.tiny.security.component;
+ 
++import com.macro.mall.tiny.modules.ums.service.UmsLoginSecurityService;
+ import com.macro.mall.tiny.security.util.JwtTokenUtil;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+@@ -29,6 +30,8 @@ public class JwtAuthenticationTokenFilter extends OncePerRequestFilter {
+     private UserDetailsService userDetailsService;
+     @Autowired
+     private JwtTokenUtil jwtTokenUtil;
++    @Autowired
++    private UmsLoginSecurityService loginSecurityService;
+     @Value("${jwt.tokenHeader}")
+     private String tokenHeader;
+     @Value("${jwt.tokenHead}")
+@@ -45,11 +48,17 @@ public class JwtAuthenticationTokenFilter extends OncePerRequestFilter {
+             LOGGER.info("checking username:{}", username);
+             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                 UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
++                // 验证JWT Token有效性
+                 if (jwtTokenUtil.validateToken(authToken, userDetails)) {
+-                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+-                    LOGGER.info("authenticated user:{}", username);
+-                    SecurityContextHolder.getContext().setAuthentication(authentication);
++                    // 互斥登录验证：检查当前token是否为最新有效token
++                    if (loginSecurityService.validateUserToken(username, authToken)) {
++                        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
++                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
++                        LOGGER.info("authenticated user:{}", username);
++                        SecurityContextHolder.getContext().setAuthentication(authentication);
++                    } else {
++                        LOGGER.warn("token已被废弃，用户已在其他地方登录: {}", username);
++                    }
+                 }
+             }
+         }
+diff --git a/src/main/java/com/macro/mall/tiny/security/config/SecurityConfig.java b/src/main/java/com/macro/mall/tiny/security/config/SecurityConfig.java
+index e581550..50542dd 100644
+--- a/src/main/java/com/macro/mall/tiny/security/config/SecurityConfig.java
++++ b/src/main/java/com/macro/mall/tiny/security/config/SecurityConfig.java
+@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.context.annotation.Bean;
+ import org.springframework.context.annotation.Configuration;
+ import org.springframework.http.HttpMethod;
++import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+ import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+ import org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer;
+@@ -21,6 +22,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
+  */
+ @Configuration
+ @EnableWebSecurity
++@EnableMethodSecurity(prePostEnabled = true)
+ public class SecurityConfig {
+ 
+     @Autowired
+diff --git a/src/main/resources/application-dev.yml b/src/main/resources/application-dev.yml
+index 638ed63..bd8ea00 100644
+--- a/src/main/resources/application-dev.yml
++++ b/src/main/resources/application-dev.yml
+@@ -2,7 +2,7 @@ spring:
+   datasource:
+     url: jdbc:mysql://localhost:3306/mall_tiny?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false
+     username: root
+-    password: root
++    password:
+   data:
+     redis:
+       host: localhost # Redis服务器地址
+diff --git a/src/main/resources/application.yml b/src/main/resources/application.yml
+index 7781b0f..efce778 100644
+--- a/src/main/resources/application.yml
++++ b/src/main/resources/application.yml
+@@ -32,8 +32,18 @@ redis:
+   key:
+     admin: 'ums:admin'
+     resourceList: 'ums:resourceList'
++    loginFail: 'ums:loginFail'
++    loginLock: 'ums:loginLock'
++    userToken: 'ums:userToken'
+   expire:
+     common: 86400 # 24小时
++    loginFail: 600 # 10分钟
++    loginLock: 1800 # 30分钟
++
++login:
++  maxFailAttempts: 5 # 最大登录失败次数
++  lockDuration: 30 # 锁定时间（分钟）
++  failWindow: 10 # 失败统计时间窗口（分钟）
+ 
+ secure:
+   ignored:
